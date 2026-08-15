@@ -28,9 +28,10 @@ import SuperAdmin from './pages/SuperAdmin'
 import PublicBooking from './pages/PublicBooking'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth()
+  const { user, profile, loading } = useAuth()
   if (loading) return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin w-8 h-8 text-blue-600"/></div>
   if (!user) return <Navigate to="/login" replace />
+  if (profile?.is_super_admin) return <Navigate to="/super-admin" replace />
   return <>{children}</>
 }
 
