@@ -27,17 +27,27 @@ import Settings from './pages/Settings'
 import SuperAdmin from './pages/SuperAdmin'
 import PublicBooking from './pages/PublicBooking'
 
+// Spinner helper
+const Spinner = () => (
+  <div className="flex items-center justify-center h-screen">
+    <Loader2 className="animate-spin w-8 h-8 text-blue-600"/>
+  </div>
+)
+
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, profile, loading } = useAuth()
-  if (loading || (user && profile === undefined)) return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin w-8 h-8 text-blue-600"/></div>
+  // Aguarda tanto o auth quanto o perfil carregarem
+  if (loading || (user && profile === undefined)) return <Spinner />
   if (!user) return <Navigate to="/login" replace />
+  // Super admin não acessa o app normal
   if (profile?.is_super_admin) return <Navigate to="/super-admin" replace />
   return <>{children}</>
 }
 
 function SuperAdminRoute({ children }: { children: ReactNode }) {
   const { user, profile, loading } = useAuth()
-  if (loading || (user && profile === undefined)) return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin w-8 h-8 text-blue-600"/></div>
+  // Aguarda tanto o auth quanto o perfil carregarem
+  if (loading || (user && profile === undefined)) return <Spinner />
   if (!user || !profile?.is_super_admin) return <Navigate to="/login" replace />
   return <>{children}</>
 }
@@ -57,7 +67,7 @@ const App = () => (
           <Route path="/trial-expired" element={<TrialExpired />} />
           <Route path="/agendar/:tenantId" element={<PublicBooking />} />
 
-          {/* App — protegido */}
+          {/* App normal — protegido por tenant */}
           <Route
             element={
               <ProtectedRoute>
@@ -79,8 +89,15 @@ const App = () => (
             <Route path="/settings" element={<Settings />} />
           </Route>
 
-          {/* Super Admin — standalone, sem Layout (super admin não tem tenant) */}
-          <Route path="/super-admin" element={<SuperAdminRoute><SuperAdmin /></SuperAdminRoute>} />
+          {/* Super Admin — standalone (sem Layout) */}
+          <Route
+            path="/super-admin"
+            element={
+              <SuperAdminRoute>
+                <SuperAdmin />
+              </SuperAdminRoute>
+            }
+          />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
