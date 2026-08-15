@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/hooks/use-auth'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Users, TrendingUp, TrendingDown, AlertTriangle, DollarSign,
   Activity, Search, RefreshCw, ExternalLink, Clock,
-  CheckCircle2, XCircle, BarChart3, Zap
+  CheckCircle2, XCircle, BarChart3, Zap, LogOut, Shield
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
 
@@ -78,6 +80,9 @@ function computeChurnRisk(tenant: Partial<Tenant>): { risk: Tenant['churn_risk']
 }
 
 export default function SuperAdmin() {
+  const { signOut } = useAuth()
+  const navigate = useNavigate()
+  const handleSignOut = async () => { await signOut(); navigate('/login') }
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -177,7 +182,20 @@ export default function SuperAdmin() {
   const topOs = [...tenants].sort((a,b)=>b.total_os-a.total_os).slice(0,5)
 
   return (
-    <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
+    <div className="min-h-screen bg-gray-50">
+      {/* Header standalone */}
+      <header className="bg-white border-b px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Shield className="w-5 h-5 text-blue-600"/>
+          <span className="font-bold text-gray-900">Auto Estética Flow</span>
+          <span className="text-gray-400">·</span>
+          <span className="text-sm text-blue-600 font-medium">Super Admin</span>
+        </div>
+        <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-2 text-gray-500">
+          <LogOut className="w-4 h-4"/>Sair
+        </Button>
+      </header>
+      <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black text-gray-900">Super Admin</h1>
@@ -399,6 +417,7 @@ export default function SuperAdmin() {
           </table>
         </div>
       </div>
+    </div>
     </div>
   )
 }

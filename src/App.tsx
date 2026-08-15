@@ -79,16 +79,8 @@ const App = () => (
             <Route path="/settings" element={<Settings />} />
           </Route>
 
-          {/* Super Admin */}
-          <Route
-            element={
-              <SuperAdminRoute>
-                <Layout />
-              </SuperAdminRoute>
-            }
-          >
-            <Route path="/super-admin" element={<SuperAdmin />} />
-          </Route>
+          {/* Super Admin — standalone, sem Layout (super admin não tem tenant) */}
+          <Route path="/super-admin" element={<SuperAdminRoute><SuperAdmin /></SuperAdminRoute>} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
