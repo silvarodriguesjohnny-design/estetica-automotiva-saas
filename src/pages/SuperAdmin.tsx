@@ -14,7 +14,7 @@ import {
   Building2, Pencil, Trash2, PowerOff, Power, Plus,
   ChevronRight, Mail, CreditCard, Eye, EyeOff,
   BarChart3, Key, Webhook, Save, Send, Wifi, WifiOff,
-  UserPlus, Link, QrCode, CheckCircle, XCircle
+  UserPlus, Link, QrCode, CheckCircle, XCircle, Copy, ExternalLink, Tablet, Download, Smartphone
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
@@ -710,6 +710,207 @@ function SectionIntegracoes() {
   )
 }
 
+
+// ─── Agendamentos — QR Code + PWA por tenant ─────────────────────────────────
+
+function SectionAgendamentos() {
+  const [tenants, setTenants] = useState<Tenant[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [copied, setCopied] = useState<string | null>(null)
+  const [showQR, setShowQR] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.from('tenants').select('*').order('name').then(({ data }) => {
+      setTenants(data ?? [])
+      setLoading(false)
+    })
+  }, [])
+
+  const baseUrl = window.location.origin
+  const bookingUrl = (tenantId: string) => `${baseUrl}/agendar/${tenantId}`
+  const qrUrl = (tenantId: string) =>
+    `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=12&color=1B4FD8&data=${encodeURIComponent(bookingUrl(tenantId))}`
+
+  const copyLink = async (tenantId: string) => {
+    await navigator.clipboard.writeText(bookingUrl(tenantId))
+    setCopied(tenantId)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  const copyWhatsApp = async (t: Tenant) => {
+    const msg = `Olá! Agende seu serviço na ${t.name} de forma rápida e fácil:\n\n🔗 ${bookingUrl(t.id)}\n\nEscolha o horário, o serviço e pague online.`
+    await navigator.clipboard.writeText(msg)
+    toast.success('Mensagem copiada para o WhatsApp!')
+  }
+
+  const filtered = tenants.filter(t =>
+    t.name.toLowerCase().includes(search.toLowerCase()) ||
+    t.owner_email.toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-3 items-center justify-between">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
+          <Input placeholder="Buscar empresa..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)}/>
+        </div>
+        <span className="text-sm text-gray-400">{filtered.length} empresas</span>
+      </div>
+
+      {/* Instrução PWA */}
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start gap-3">
+        <Tablet className="w-5 h-5 text-blue-600 shrink-0 mt-0.5"/>
+        <div>
+          <p className="text-sm font-semibold text-blue-800">Como instalar no tablet como PWA</p>
+          <p className="text-sm text-blue-600 mt-1">
+            1. Abra o link da empresa no Safari (iPad) ou Chrome (Android)<br/>
+            2. Toque em <strong>Compartilhar</strong> → <strong>Adicionar à Tela de Início</strong><br/>
+            3. O app da agenda aparece como ícone — abre em tela cheia, sem barra do navegador
+          </p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-48">
+          <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"/>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filtered.map(t => (
+            <div key={t.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              {/* Header */}
+              <div className="p-4 border-b border-gray-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-primary to-purple-600 rounded-xl flex items-center justify-center shrink-0">
+                    <span className="text-white font-bold text-sm">{t.name[0]}</span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900 text-sm">{t.name}</p>
+                    <p className="text-xs text-gray-400">{t.cidade ?? t.owner_email}</p>
+                  </div>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.subscription_type === 'active' ? 'bg-green-100 text-green-700' : t.subscription_type === 'trial' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {t.subscription_type}
+                </span>
+              </div>
+
+              {/* QR Code */}
+              <div className="flex gap-4 p-4">
+                <div className="shrink-0">
+                  {showQR === t.id ? (
+                    <div className="relative">
+                      <img
+                        src={qrUrl(t.id)}
+                        alt={`QR Code ${t.name}`}
+                        className="w-28 h-28 rounded-xl border border-gray-100"
+                        loading="lazy"
+                      />
+                      <button
+                        onClick={() => setShowQR(null)}
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-gray-500 text-white rounded-full text-xs flex items-center justify-center"
+                      >×</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowQR(t.id)}
+                      className="w-28 h-28 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-1 hover:border-primary hover:bg-blue-50 transition-all group"
+                    >
+                      <QrCode className="w-8 h-8 text-gray-300 group-hover:text-primary"/>
+                      <span className="text-xs text-gray-400 group-hover:text-primary">Ver QR Code</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0 space-y-2">
+                  {/* URL */}
+                  <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs font-mono text-gray-500 truncate">
+                    /agendar/{t.id.slice(0, 8)}…
+                  </div>
+
+                  {/* Botões */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => copyLink(t.id)}
+                      className={`flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg border transition-all ${copied === t.id ? 'bg-green-50 border-green-200 text-green-700' : 'border-gray-200 hover:border-primary hover:text-primary hover:bg-blue-50'}`}
+                    >
+                      {copied === t.id ? <CheckCircle className="w-3.5 h-3.5"/> : <Copy className="w-3.5 h-3.5"/>}
+                      {copied === t.id ? 'Copiado!' : 'Copiar link'}
+                    </button>
+
+                    <a
+                      href={bookingUrl(t.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg border border-gray-200 hover:border-primary hover:text-primary hover:bg-blue-50 transition-all"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5"/>
+                      Abrir
+                    </a>
+
+                    <button
+                      onClick={() => copyWhatsApp(t)}
+                      className="col-span-2 flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg bg-green-50 border border-green-200 text-green-700 hover:bg-green-100 transition-all"
+                    >
+                      <Smartphone className="w-3.5 h-3.5"/>
+                      Copiar mensagem WhatsApp
+                    </button>
+                  </div>
+
+                  {/* PWA hint */}
+                  <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                    <Tablet className="w-3 h-3"/>
+                    Abra no tablet → Compartilhar → Adicionar à Tela de Início
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal QR ampliado */}
+      {showQR && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowQR(null)}
+        >
+          <div className="bg-white rounded-3xl p-8 text-center shadow-2xl" onClick={e => e.stopPropagation()}>
+            <p className="font-bold text-gray-900 mb-4">
+              {tenants.find(t => t.id === showQR)?.name}
+            </p>
+            <img
+              src={qrUrl(showQR)}
+              alt="QR Code"
+              className="w-64 h-64 mx-auto rounded-2xl"
+            />
+            <p className="text-sm text-gray-400 mt-4 max-w-xs">
+              Escaneie com a câmera do tablet para abrir a agenda pública
+            </p>
+            <div className="mt-4 flex gap-2 justify-center">
+              <a
+                href={qrUrl(showQR)}
+                download={`qrcode-${showQR?.slice(0,8)}.png`}
+                className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-primary/90"
+              >
+                <Download className="w-4 h-4"/>
+                Baixar QR Code
+              </a>
+              <button
+                onClick={() => setShowQR(null)}
+                className="text-sm text-gray-500 px-4 py-2 rounded-xl border border-gray-200 hover:bg-gray-50"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Configurações ────────────────────────────────────────────────────────────
 
 function SectionConfiguracoes() {
@@ -751,12 +952,13 @@ function SectionConfiguracoes() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-type Section = 'dashboard' | 'tenants' | 'usuarios' | 'integracoes' | 'configuracoes'
+type Section = 'dashboard' | 'tenants' | 'usuarios' | 'integracoes' | 'agendamentos' | 'configuracoes'
 const NAV: { id: Section; label: string; icon: any }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
   { id: 'tenants', label: 'Empresas', icon: Building2 },
   { id: 'usuarios', label: 'Usuários', icon: UserCheck },
   { id: 'integracoes', label: 'Integrações', icon: Plug },
+  { id: 'agendamentos', label: 'Agendamentos', icon: QrCode },
   { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ]
 
@@ -809,6 +1011,7 @@ export default function SuperAdmin() {
                 {section === 'tenants' && 'Gerencie todas as empresas da plataforma'}
                 {section === 'usuarios' && 'Usuários e suas associações a empresas'}
                 {section === 'integracoes' && 'Instâncias WhatsApp via Evolution API'}
+                {section === 'agendamentos' && 'Links de agendamento e QR Code por empresa'}
                 {section === 'configuracoes' && 'Configurações globais da plataforma'}
               </p>
             </div>
@@ -816,6 +1019,7 @@ export default function SuperAdmin() {
             {section === 'tenants' && <SectionTenants/>}
             {section === 'usuarios' && <SectionUsuarios/>}
             {section === 'integracoes' && <SectionIntegracoes/>}
+            {section === 'agendamentos' && <SectionAgendamentos/>}
             {section === 'configuracoes' && <SectionConfiguracoes/>}
           </div>
         </main>

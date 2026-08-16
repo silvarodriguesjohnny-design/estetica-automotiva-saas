@@ -9,6 +9,58 @@ import {
 import { toast } from 'sonner'
 import type { Tenant, Service } from '@/types'
 
+// ── PWA: injeta manifest dinâmico e registra SW ──────────────────────
+function usePWA(tenant: Tenant | null) {
+  useEffect(() => {
+    if (!tenant) return
+
+    // Registra service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw-booking.js').catch(() => {})
+    }
+
+    // Injeta manifest dinâmico com nome da estética
+    const manifest = {
+      name: tenant.name,
+      short_name: tenant.name.split(' ')[0],
+      description: `Agende seu serviço na ${tenant.name}`,
+      start_url: window.location.href,
+      display: 'standalone',
+      orientation: 'portrait',
+      background_color: '#ffffff',
+      theme_color: '#1B4FD8',
+      icons: [
+        { src: '/pwa-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+        { src: '/pwa-icon-192.png', sizes: '512x512', type: 'image/png' },
+      ],
+    }
+
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+
+    // Remove manifest anterior se existir
+    document.querySelectorAll('link[rel="manifest"]').forEach(el => el.remove())
+
+    const link = document.createElement('link')
+    link.rel = 'manifest'
+    link.href = url
+    document.head.appendChild(link)
+
+    // Apple meta tags dinâmicas
+    const setMeta = (name: string, content: string) => {
+      let el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement
+      if (!el) { el = document.createElement('meta'); el.name = name; document.head.appendChild(el) }
+      el.content = content
+    }
+    setMeta('apple-mobile-web-app-title', tenant.name)
+    setMeta('apple-mobile-web-app-capable', 'yes')
+    setMeta('apple-mobile-web-app-status-bar-style', 'default')
+
+    return () => URL.revokeObjectURL(url)
+  }, [tenant])
+}
+
+
 /* ── Types ── */
 
 interface SubscriptionPlan {
@@ -110,6 +162,7 @@ export default function PublicBooking() {
   const [searchParams] = useSearchParams()
 
   const [tenant, setTenant] = useState<Tenant | null>(null)
+  usePWA(tenant)
   const [services, setServices] = useState<Service[]>([])
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
   const [loading, setLoading] = useState(true)
