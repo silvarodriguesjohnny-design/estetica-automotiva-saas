@@ -57,6 +57,7 @@ export interface Tenant {
   bairro?: string | null
   cidade?: string | null
   estado?: string | null
+  is_active?: boolean
   horario_funcionamento?: Record<string, unknown> | null
   numero_vagas?: number | null
   quantidade_tecnicos?: number | null

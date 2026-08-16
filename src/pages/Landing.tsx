@@ -184,7 +184,7 @@ export default function Landing() {
                 </Button>
               </Link>
               <Link to="/login">
-                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 text-lg px-8">
+                <Button size="lg" variant="ghost" className="bg-slate-800/80 border border-slate-600 text-slate-100 hover:bg-slate-700 hover:text-white text-lg px-8">
                   Já tenho conta
                 </Button>
               </Link>
@@ -202,25 +202,6 @@ export default function Landing() {
         {/* Scroll indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
           <ChevronDown className="w-6 h-6 text-white/50"/>
-        </div>
-      </section>
-
-      {/* STATS BAR */}
-      <section className="bg-gradient-to-r from-blue-600 to-purple-700 py-10">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center text-white">
-            {[
-              { n: '+500', l: 'Estéticas usando' },
-              { n: '+12k', l: 'OS criadas por mês' },
-              { n: '98%', l: 'Clientes satisfeitos' },
-              { n: 'R$0', l: 'No primeiro mês' },
-            ].map(s => (
-              <div key={s.l}>
-                <p className="text-3xl font-black">{s.n}</p>
-                <p className="text-blue-100 text-sm mt-1">{s.l}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 

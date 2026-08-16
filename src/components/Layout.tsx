@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Users, Car, Wrench, ClipboardList,
   DollarSign, Megaphone, MessageSquare, Settings, LogOut,
-  Menu, X, ChevronDown, Shield, Package, FileText, Repeat, Moon, Sun,
+  Menu, X, ChevronDown, Shield, Package, FileText, Repeat, Moon, Sun, CalendarDays,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -22,6 +22,7 @@ const NAV_GROUPS = [
     label: 'Principal',
     items: [
       { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/agenda',    icon: CalendarDays,    label: 'Agenda' },
       { to: '/ordens',    icon: ClipboardList,   label: 'Ordens de Serviço' },
       { to: '/financeiro',icon: DollarSign,       label: 'Financeiro' },
     ],

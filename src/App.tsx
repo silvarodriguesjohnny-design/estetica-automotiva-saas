@@ -27,6 +27,7 @@ import Settings from './pages/Settings'
 import SuperAdmin from './pages/SuperAdmin'
 import PublicBooking from './pages/PublicBooking'
 import Combos from './pages/Combos'
+import Agenda from './pages/Agenda'
 
 // Spinner helper
 const Spinner = () => (
@@ -80,6 +81,7 @@ const App = () => (
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/veiculos" element={<Veiculos />} />
             <Route path="/tecnicos" element={<Tecnicos />} />
+            <Route path="/agenda" element={<Agenda />} />
             <Route path="/ordens" element={<OrdensServico />} />
             <Route path="/financeiro" element={<Financeiro />} />
             <Route path="/estoque" element={<Estoque />} />
