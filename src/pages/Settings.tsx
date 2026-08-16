@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
-import { Settings as SettingsIcon, Building, Palette, Shield, Link2, Copy, ExternalLink, QrCode } from 'lucide-react'
+import { Settings as SettingsIcon, Building, Palette, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -57,7 +57,6 @@ export default function Settings() {
       <Tabs defaultValue="geral">
         <TabsList>
           <TabsTrigger value="geral">Geral</TabsTrigger>
-          <TabsTrigger value="agendamento">Agendamento</TabsTrigger>
           <TabsTrigger value="plano">Plano</TabsTrigger>
           <TabsTrigger value="seguranca">Segurança</TabsTrigger>
         </TabsList>
@@ -155,76 +154,6 @@ export default function Settings() {
               }}>
                 Redefinir senha
               </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Agendamento ── */}
-        <TabsContent value="agendamento" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Link2 className="w-5 h-5 text-primary"/>
-                Link de Agendamento Público
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Compartilhe este link com seus clientes. Eles podem agendar serviços, escolher combos e pagar antecipado — sem precisar ligar.
-              </p>
-
-              {/* Link display */}
-              <div className="flex items-center gap-2">
-                <div className="flex-1 bg-muted rounded-lg px-4 py-3 font-mono text-sm text-foreground break-all border border-border">
-                  {`${window.location.origin}/agendar/${tenant?.id}`}
-                </div>
-                <Button variant="outline" size="icon" className="shrink-0 h-12 w-12"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/agendar/${tenant?.id}`)
-                    toast.success('Link copiado!')
-                  }}>
-                  <Copy className="w-4 h-4"/>
-                </Button>
-                <a href={`/agendar/${tenant?.id}`} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" size="icon" className="shrink-0 h-12 w-12">
-                    <ExternalLink className="w-4 h-4"/>
-                  </Button>
-                </a>
-              </div>
-
-              {/* Actions */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <a href={`/agendar/${tenant?.id}`} target="_blank" rel="noopener noreferrer" className="block">
-                  <Button className="w-full gap-2 bg-primary hover:bg-primary/90">
-                    <ExternalLink className="w-4 h-4"/>
-                    Abrir agenda pública
-                  </Button>
-                </a>
-                <Button variant="outline" className="gap-2 w-full"
-                  onClick={() => {
-                    const text = `Agende seu serviço na ${tenant?.name}!
-
-🔗 ${window.location.origin}/agendar/${tenant?.id}
-
-Escolha o horário, serviço e pague online.`
-                    navigator.clipboard.writeText(text)
-                    toast.success('Mensagem copiada — cole no WhatsApp!')
-                  }}>
-                  <Copy className="w-4 h-4"/>
-                  Copiar mensagem WhatsApp
-                </Button>
-              </div>
-
-              {/* Tips */}
-              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900 rounded-xl p-4 space-y-2">
-                <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">💡 Como usar</p>
-                <ul className="text-sm text-blue-700 dark:text-blue-400 space-y-1 list-disc list-inside">
-                  <li>Coloque o link na bio do Instagram</li>
-                  <li>Mande no WhatsApp para seus clientes</li>
-                  <li>Imprima um QR Code e cole na recepção</li>
-                  <li>Adicione na sua página do Google Meu Negócio</li>
-                </ul>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>

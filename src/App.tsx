@@ -26,6 +26,7 @@ import TemplatesMensagens from './pages/TemplatesMensagens'
 import Settings from './pages/Settings'
 import SuperAdmin from './pages/SuperAdmin'
 import PublicBooking from './pages/PublicBooking'
+import Combos from './pages/Combos'
 
 // Spinner helper
 const Spinner = () => (
@@ -83,6 +84,7 @@ const App = () => (
             <Route path="/financeiro" element={<Financeiro />} />
             <Route path="/estoque" element={<Estoque />} />
             <Route path="/servicos" element={<Servicos />} />
+            <Route path="/combos" element={<Combos />} />
             <Route path="/campanhas" element={<Campanhas />} />
             <Route path="/mensagens" element={<MensagensWhatsApp />} />
             <Route path="/templates" element={<TemplatesMensagens />} />

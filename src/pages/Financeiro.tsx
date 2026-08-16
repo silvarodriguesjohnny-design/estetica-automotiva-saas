@@ -200,34 +200,58 @@ export default function Financeiro() {
       </div>
 
       {/* Card Receita Perdida */}
-      {inactiveClients.length > 0 && (
-        <Card className="border-orange-200 bg-orange-50/40">
-          <CardContent className="p-5">
+      <Card className="border-orange-200 bg-orange-50/40">
+        <CardContent className="p-5">
+          {/* Linha de controle */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-5 w-5 text-orange-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-orange-900 leading-tight">Receita em risco — clientes inativos</p>
+                <p className="text-xs text-orange-700">Potencial não realizado baseado no ticket médio</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Inativo há +</span>
+              <Select value={String(inactiveDays)} onValueChange={v => handleInactiveDaysChange(Number(v))}>
+                <SelectTrigger className="w-28 h-8 text-sm border-orange-200 bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 dias</SelectItem>
+                  <SelectItem value="45">45 dias</SelectItem>
+                  <SelectItem value="60">60 dias</SelectItem>
+                  <SelectItem value="90">90 dias</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {inactiveClients.length === 0 ? (
+            <div className="flex items-center gap-3 py-2">
+              <span className="text-2xl">🎉</span>
+              <p className="text-sm text-green-700 font-medium">Nenhum cliente inativo nos últimos {inactiveDays} dias!</p>
+            </div>
+          ) : (
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
-                  <AlertTriangle className="h-6 w-6 text-orange-500" />
+              <div className="flex gap-6 flex-wrap">
+                <div>
+                  <p className="text-xs text-orange-600">Receita potencial perdida</p>
+                  <p className="text-2xl font-bold text-orange-800">R$ {lostRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-semibold text-orange-900">Receita em risco — clientes inativos</p>
-                    <Badge variant="outline" className="text-orange-700 border-orange-300 bg-orange-100">{inactiveClients.length} clientes · {inactiveDays}+ dias</Badge>
-                  </div>
-                  <p className="text-sm text-orange-700">Potencial não realizado baseado no ticket médio de cada cliente</p>
-                  <div className="flex gap-6 mt-2">
-                    <div>
-                      <p className="text-xs text-orange-600">Receita potencial perdida</p>
-                      <p className="text-2xl font-bold text-orange-800">R$ {lostRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-orange-600">Ticket médio</p>
-                      <p className="text-2xl font-bold text-orange-800">R$ {avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-orange-600">Com telefone</p>
-                      <p className="text-2xl font-bold text-orange-800">{inactiveClients.filter(c => c.phone).length}</p>
-                    </div>
-                  </div>
+                  <p className="text-xs text-orange-600">Ticket médio</p>
+                  <p className="text-2xl font-bold text-orange-800">R$ {avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-orange-600">Clientes inativos</p>
+                  <p className="text-2xl font-bold text-orange-800">{inactiveClients.length}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-orange-600">Com telefone</p>
+                  <p className="text-2xl font-bold text-orange-800">{inactiveClients.filter(c => c.phone).length}</p>
                 </div>
               </div>
               <div className="flex flex-col gap-2 shrink-0">
@@ -239,9 +263,9 @@ export default function Financeiro() {
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       {/* Gráfico */}
       <Card>
