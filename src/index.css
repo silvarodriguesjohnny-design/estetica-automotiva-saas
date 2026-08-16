@@ -4,52 +4,92 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 0 0% 98%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --popover-foreground: 222 47% 11%;
+    --primary: 226 74% 47%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 16% 95%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 226 100% 96%;
+    --accent-foreground: 226 74% 40%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 16% 90%;
+    --input: 220 16% 90%;
+    --ring: 226 74% 47%;
+    --radius: 0.625rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --background: 224 30% 9%;
+    --foreground: 210 40% 96%;
+    --card: 224 27% 12%;
+    --card-foreground: 210 40% 96%;
+    --popover: 224 27% 12%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 226 74% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 224 20% 18%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 224 20% 18%;
+    --muted-foreground: 215 16% 55%;
+    --accent: 226 40% 20%;
+    --accent-foreground: 226 74% 70%;
+    --destructive: 0 62% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 224 20% 20%;
+    --input: 224 20% 20%;
+    --ring: 226 74% 60%;
   }
 }
 
 @layer base {
-  * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  * { @apply border-border; box-sizing: border-box; }
+  body { @apply bg-background text-foreground antialiased; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  h1,h2,h3,h4,h5,h6 { @apply font-semibold tracking-tight; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/40; }
 }
+
+@layer components {
+  .stat-card { @apply bg-card rounded-xl border border-border p-5 shadow-sm hover:shadow-md transition-shadow duration-200; }
+  .page-header { @apply px-6 py-5 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-10; }
+  .page-title { @apply text-xl font-bold text-foreground tracking-tight; }
+  .page-subtitle { @apply text-sm text-muted-foreground mt-0.5; }
+  .page-section { @apply p-6 space-y-5; }
+
+  .data-table { @apply w-full bg-card rounded-xl border border-border overflow-hidden shadow-sm; }
+  .data-table th { @apply px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/40; }
+  .data-table td { @apply px-4 py-3 text-sm border-t border-border/60; }
+  .data-table tbody tr:hover td { @apply bg-accent/30 transition-colors; }
+
+  .badge-blue   { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700; }
+  .badge-green  { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700; }
+  .badge-yellow { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700; }
+  .badge-red    { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700; }
+  .badge-purple { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700; }
+  .badge-gray   { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600; }
+
+  .booking-input { @apply h-14 text-lg px-5 rounded-xl border-2 border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all w-full bg-white outline-none; }
+  .booking-select { @apply h-14 text-lg px-5 rounded-xl border-2 border-border focus:border-primary transition-all w-full bg-white outline-none appearance-none; }
+  .booking-btn-primary { @apply h-14 w-full text-lg font-semibold rounded-xl bg-primary text-white hover:bg-primary/90 active:scale-[0.99] transition-all duration-200 flex items-center justify-center gap-2; }
+  .booking-btn-outline { @apply h-14 w-full text-lg font-medium rounded-xl border-2 border-border hover:border-primary hover:text-primary bg-transparent transition-all duration-200 flex items-center justify-center gap-2; }
+  .booking-card { @apply bg-white rounded-2xl border-2 border-border hover:border-primary hover:shadow-lg cursor-pointer transition-all duration-200 p-5; }
+  .booking-card-active { @apply bg-white rounded-2xl border-2 border-primary shadow-lg cursor-pointer transition-all duration-200 p-5; }
+}
+
+@keyframes fade-in { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes slide-up { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+@keyframes count-up { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
+
+.animate-fade-in  { animation: fade-in 0.3s ease both; }
+.animate-slide-up { animation: slide-up 0.4s ease both; }
+.animate-count-up { animation: count-up 0.5s ease both; }
