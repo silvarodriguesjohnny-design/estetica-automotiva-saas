@@ -103,7 +103,7 @@ function RevenueLossCalculator() {
               deixando na mesa?
             </span>
           </h2>
-          <p className="text-slate-400 text-xl max-w-2xl mx-auto">
+          <p className="text-slate-200 text-xl max-w-2xl mx-auto">
             Todo cliente que não volta é dinheiro que você trabalhou para ganhar — e perdeu.
             Veja quanto <strong className="text-white">sua estética</strong> está perdendo agora.
           </p>
@@ -141,11 +141,11 @@ function RevenueLossCalculator() {
               <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-transparent" />
               <div className="relative">
                 <TrendingDown className="w-12 h-12 text-red-400 mx-auto mb-4" />
-                <p className="text-slate-400 text-sm font-medium uppercase tracking-widest mb-2">Você perdeu este mês</p>
+                <p className="text-slate-300 text-sm font-medium uppercase tracking-widest mb-2">Você perdeu este mês</p>
                 <div className="text-6xl md:text-7xl font-black text-white mb-2 tabular-nums">
                   {fmt(monthlyLoss)}
                 </div>
-                <p className="text-red-400 text-sm mb-8">com {inactiveCount} clientes que não voltaram</p>
+                <p className="text-red-300 text-sm mb-8">com {inactiveCount} clientes que não voltaram</p>
 
                 <div className="h-px bg-red-500/20 mb-6" />
 
@@ -173,7 +173,7 @@ function RevenueLossCalculator() {
                     Recuperar minha receita agora <ArrowRight className="w-5 h-5" />
                   </button>
                 </Link>
-                <p className="text-slate-600 text-xs mt-3">14 dias grátis • Sem cartão de crédito</p>
+                
               </div>
             </div>
           </div>
@@ -291,36 +291,16 @@ export default function Landing() {
                 </Button>
               </Link>
               <Link to="/login">
-                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 text-lg px-8">
+                <Button size="lg" variant="outline" className="border-blue-300/60 text-blue-100 bg-white/10 hover:bg-white/20 hover:border-white text-lg px-8 backdrop-blur-sm">
                   Já tenho conta
                 </Button>
               </Link>
             </div>
-            <div className="flex flex-wrap gap-6 text-slate-400 text-sm">
-              {['Sem cartão de crédito', 'Cancele quando quiser', 'Suporte em português'].map(t => (
-                <span key={t} className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-green-400"/>{t}</span>
-              ))}
-            </div>
+
           </div>
         </div>
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
           <ChevronDown className="w-6 h-6 text-white/50"/>
-        </div>
-      </section>
-
-      {/* ── STATS BAR ── */}
-      <section className="bg-gradient-to-r from-blue-600 to-purple-700 py-10">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center text-white">
-            {[
-              { n: '+500', l: 'Estéticas usando' },
-              { n: '+12k', l: 'OS por mês' },
-              { n: '98%', l: 'Clientes satisfeitos' },
-              { n: 'R$0', l: 'No primeiro mês' },
-            ].map(s => (
-              <div key={s.l}><p className="text-3xl font-black">{s.n}</p><p className="text-blue-100 text-sm mt-1">{s.l}</p></div>
-            ))}
-          </div>
         </div>
       </section>
 
