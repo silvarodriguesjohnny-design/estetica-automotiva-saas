@@ -62,29 +62,43 @@ Deno.serve(async (req) => {
       return json({ error: 'Agendamento não encontrado ou expirado' }, 403)
     }
 
-    // ── Config de mensageria do tenant ──
+    // ── Config de mensageria ──
+    // Estratégia em 2 níveis:
+    //   1. Instância própria do tenant (ideal — número da estética)
+    //   2. Instância global de fallback (secrets do Supabase)
+    // Assim os tenants novos já enviam confirmação antes de configurar
+    // o WhatsApp deles, e a mensagem sempre identifica a estética.
     const { data: cfg } = await admin
       .from('messaging_configs')
       .select('instance_name, api_key, api_url, is_active')
       .eq('tenant_id', tenantId)
       .maybeSingle()
 
-    if (!cfg?.is_active || !cfg.api_key || !cfg.instance_name) {
-      // Não é erro fatal: o agendamento já foi criado com sucesso
-      return json({ sent: false, reason: 'WhatsApp não configurado para este tenant' }, 200)
-    }
+    const useTenant = !!(cfg?.is_active && cfg.api_key && cfg.instance_name)
 
-    const baseUrl = (cfg.api_url ?? Deno.env.get('EVOLUTION_API_URL') ?? '').replace(/\/+$/, '')
-    if (!baseUrl) {
-      return json({ sent: false, reason: 'URL da Evolution API não configurada' }, 200)
+    const baseUrl = (
+      useTenant
+        ? (cfg!.api_url ?? Deno.env.get('EVOLUTION_API_URL') ?? '')
+        : (Deno.env.get('EVOLUTION_API_URL') ?? '')
+    ).replace(/\/+$/, '')
+
+    const instance = useTenant ? cfg!.instance_name : Deno.env.get('EVOLUTION_INSTANCE')
+    const apiKey   = useTenant ? cfg!.api_key      : Deno.env.get('EVOLUTION_API_KEY')
+
+    if (!baseUrl || !instance || !apiKey) {
+      // Não é erro fatal: o agendamento já foi criado com sucesso
+      return json({
+        sent: false,
+        reason: 'WhatsApp não configurado (nem no tenant, nem no fallback global)',
+      }, 200)
     }
 
     // ── Envio ──
-    const evoRes = await fetch(`${baseUrl}/message/sendText/${cfg.instance_name}`, {
+    const evoRes = await fetch(`${baseUrl}/message/sendText/${instance}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: cfg.api_key,
+        apikey: apiKey,
       },
       body: JSON.stringify({
         number: phone,
@@ -106,7 +120,7 @@ Deno.serve(async (req) => {
       phone,
       message,
       status: 'sent',
-      context: 'public_booking_confirmation',
+      context: useTenant ? 'public_booking_confirmation' : 'public_booking_confirmation_fallback',
     }).then(() => {}, () => {}) // ignora se a tabela não existir
 
     return json({ sent: true, messageId: data?.key?.id ?? null })

@@ -177,67 +177,36 @@ export default function Onboarding() {
   const handleFinish = async () => {
     setSaving(true)
     try {
-      // 1. Cria usuário no Supabase Auth
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: fullName },
-          emailRedirectTo: `${window.location.origin}/login`,
+      // 1. Cria usuário + tenant + profile + serviços padrão (Edge Function,
+      //    porque a RLS de `tenants` impede o frontend de criar o próprio tenant)
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/signup-tenant`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
+        body: JSON.stringify({
+          email, password, fullName,
+          company, cnpj, companyPhone, ownerPhone,
+          planId, cep, rua, numero, complemento, bairro, cidade, uf,
+        }),
       })
 
-      if (authErr) {
-        toast.error(
-          authErr.message.includes('already registered')
-            ? 'Este e-mail já possui uma conta. Faça login.'
-            : authErr.message,
-        )
+      const result = await res.json()
+
+      if (!res.ok || result.error) {
+        toast.error(result.error ?? 'Não conseguimos criar sua conta.')
         setSaving(false)
         return
       }
 
-      const userId = authData.user?.id
-      if (!userId) throw new Error('Falha ao criar usuário')
+      const tenantId: string = result.tenant.id
 
-      // 2. Cria o tenant
-      let slug = slugify(company)
-      const { data: exists } = await supabase.from('tenants').select('id').eq('slug', slug).maybeSingle()
-      if (exists) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`
-
-      const { data: tenant, error: tenantErr } = await supabase.from('tenants').insert({
-        name: company,
-        slug,
-        plan_type: planId,
-        subscription_type: 'trial',
-        owner_id: userId,
-        full_name: fullName,
-        email,
-        phone: onlyDigits(companyPhone),
-        cpf_cnpj: onlyDigits(cnpj) || null,
-        cep: onlyDigits(cep) || null,
-        rua: rua || null,
-        numero: numero || null,
-        complemento: complemento || null,
-        cidade: cidade ? `${cidade}${uf ? `, ${uf}` : ''}` : null,
-        is_active: true,
-      }).select('id').single()
-
-      if (tenantErr) throw tenantErr
-
-      // 3. Vincula o profile ao tenant
-      await supabase.from('profiles').upsert({
-        id: userId,
-        tenant_id: tenant.id,
-        full_name: fullName,
-        email,
-        role: 'admin',
-      }, { onConflict: 'id' })
-
-      // 4. Pagamento imediato → Stripe
+      // 2. Pagamento imediato → Stripe
       if (billing === 'now') {
         try {
-          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
+          const cRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -245,7 +214,7 @@ export default function Onboarding() {
             },
             body: JSON.stringify({
               mode: 'subscription',
-              tenant_id: tenant.id,
+              tenant_id: tenantId,
               plan_id: planId,
               amount: Math.round(plan.price * 100),
               description: `Auto Estética Flow — Plano ${plan.name}`,
@@ -254,16 +223,25 @@ export default function Onboarding() {
               cancel_url: `${window.location.origin}/onboarding?plan=${planId}`,
             }),
           })
-          const { url } = await res.json()
+          const { url } = await cRes.json()
           if (url) { window.location.href = url; return }
-          toast.info('Checkout indisponível. Sua conta foi criada com 14 dias grátis.')
+          toast.info('Checkout indisponível — sua conta foi criada com 14 dias grátis.')
         } catch {
-          toast.info('Checkout indisponível. Sua conta foi criada com 14 dias grátis.')
+          toast.info('Checkout indisponível — sua conta foi criada com 14 dias grátis.')
         }
       }
 
-      toast.success('Conta criada! Verifique seu e-mail para confirmar. 🚗')
-      navigate('/login?welcome=1')
+      // 3. Login automático — o usuário já entra no sistema
+      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
+
+      if (signInErr) {
+        toast.success('Conta criada! Faça login para começar. 🚗')
+        navigate('/login?welcome=1')
+        return
+      }
+
+      toast.success(`Bem-vindo, ${fullName.split(' ')[0]}! Sua estética está pronta. 🚗`)
+      navigate('/dashboard')
     } catch (err) {
       console.error('[Onboarding]', err)
       toast.error('Não conseguimos criar sua conta. Tente novamente.')

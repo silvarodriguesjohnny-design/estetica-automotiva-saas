@@ -190,7 +190,7 @@ export default function Landing() {
               </Link>
             </div>
             <div className="flex flex-wrap gap-6 text-slate-400 text-sm">
-              {['Sem cartão de crédito', 'Cancele quando quiser', 'Suporte em português'].map(t => (
+              {['Cancele quando quiser'].map(t => (
                 <span key={t} className="flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-green-400"/>{t}
                 </span>

@@ -281,7 +281,9 @@ export default function PublicBooking() {
     })()
   }, [date, tenantId])
 
-  /* ── busca por CPF/CNPJ ── */
+  /* ── busca por CPF/CNPJ ──
+     Cliente conhecido  → pula "Seus dados", vai direto para o veículo
+     Cliente novo       → segue para o cadastro                        */
   const handleIdentify = useCallback(async () => {
     const raw = onlyDigits(doc)
     if (!isValidDoc(doc)) {
@@ -289,24 +291,44 @@ export default function PublicBooking() {
       return
     }
     setChecking(true)
-    const { data } = await supabase
-      .from('customers').select('id, name, phone, email')
-      .eq('tenant_id', tenantId!).eq('cpf_cnpj', raw).maybeSingle()
+    try {
+      const { data, error } = await supabase
+        .from('customers').select('id, name, phone, email')
+        .eq('tenant_id', tenantId!).eq('cpf_cnpj', raw).maybeSingle()
 
-    if (data) {
-      const c = data as Customer
-      setCustomer(c); setIsReturning(true)
-      setName(c.name); setPhone(c.phone ?? ''); setEmail(c.email ?? '')
-      const { data: vs } = await supabase
-        .from('vehicles').select('id, brand, model, plate, color').eq('customer_id', c.id)
-      setSavedVehicles((vs as Vehicle[]) ?? [])
-      toast.success(`Bem-vindo de volta, ${c.name.split(' ')[0]}!`)
-      setStep('vehicle')
-    } else {
+      if (error) console.warn('[identify]', error.message)
+
+      if (data) {
+        const c = data as Customer
+        setCustomer(c)
+        setIsReturning(true)
+        setName(c.name); setPhone(c.phone ?? ''); setEmail(c.email ?? '')
+
+        const { data: vs } = await supabase
+          .from('vehicles').select('id, brand, model, plate, color')
+          .eq('customer_id', c.id).eq('tenant_id', tenantId!)
+        const list = (vs as Vehicle[]) ?? []
+        setSavedVehicles(list)
+        // Se só tem um veículo, já deixa selecionado
+        if (list.length === 1) setVehicleId(list[0].id)
+
+        toast.success(`Bem-vindo de volta, ${c.name.split(' ')[0]}!`)
+        setStep('vehicle')
+      } else {
+        // Primeira vez nesta estética
+        setCustomer(null)
+        setIsReturning(false)
+        setSavedVehicles([])
+        setStep('register')
+      }
+    } catch (err) {
+      console.error('[identify]', err)
+      // Não trava o cliente: segue como cadastro novo
       setIsReturning(false)
       setStep('register')
+    } finally {
+      setChecking(false)
     }
-    setChecking(false)
   }, [doc, tenantId])
 
   /* ── navegação ── */
@@ -554,18 +576,28 @@ export default function PublicBooking() {
                 autoFocus />
             </Field>
 
-            <div className="grid grid-cols-2 gap-3 mt-5">
-              <div className="p-4 rounded-2xl bg-blue-50 border-2 border-blue-100">
-                <User className="w-5 h-5 text-blue-600 mb-2" />
-                <p className="font-bold text-sm text-blue-900">Já sou cliente</p>
-                <p className="text-xs text-blue-700 mt-0.5">Preenchemos tudo pra você</p>
-              </div>
-              <div className="p-4 rounded-2xl bg-gray-50 border-2 border-gray-100">
-                <Sparkles className="w-5 h-5 text-gray-500 mb-2" />
-                <p className="font-bold text-sm text-gray-800">Primeira vez</p>
-                <p className="text-xs text-gray-500 mt-0.5">Cadastro rápido em 1 minuto</p>
+            {/* Explicação — não são botões, o sistema detecta sozinho */}
+            <div className="mt-5 p-4 rounded-2xl bg-blue-50 border border-blue-100 flex gap-3">
+              <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-semibold text-blue-900 mb-1">O sistema reconhece você automaticamente</p>
+                <p className="text-blue-700 leading-relaxed">
+                  <strong>Já é cliente?</strong> Buscamos seu cadastro e seus veículos — você vai direto para a escolha do serviço.
+                </p>
+                <p className="text-blue-700 leading-relaxed mt-1">
+                  <strong>Primeira vez?</strong> Pedimos só nome e WhatsApp. Leva menos de 1 minuto.
+                </p>
               </div>
             </div>
+
+            {/* Botão alternativo, caso a busca falhe por algum motivo */}
+            {isValidDoc(doc) && (
+              <button
+                onClick={() => { setCustomer(null); setIsReturning(false); setSavedVehicles([]); setStep('register') }}
+                className="w-full mt-3 text-sm text-gray-400 hover:text-blue-600 underline underline-offset-2 transition-colors">
+                Sou novo por aqui — ir direto para o cadastro
+              </button>
+            )}
           </Section>
         )}
 

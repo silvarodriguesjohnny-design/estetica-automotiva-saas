@@ -1,111 +1,225 @@
 /**
  * Edge Function: provision-whatsapp
- * Cria uma instância Evolution API para uma empresa quando ela assina um plano.
- * Chamada automaticamente pelo webhook Stripe ou manualmente pelo admin.
  *
- * SEGURANÇA: A Global API Key do Evolution NUNCA vai para o frontend.
+ * Cria (ou recria) a instância Evolution API de um tenant.
+ *
+ * FLUXO:
+ *   1. Grava status 'provisioning'
+ *   2. Cria a instância na Evolution com webhook apontando de volta
+ *   3. Busca o QR Code e grava status 'qr_pending'
+ *   4. O dono escaneia → a Evolution chama whatsapp-webhook → 'connected'
+ *
+ * IDEMPOTÊNCIA:
+ *   O nome da instância é determinístico (aef-{slug}-{8 chars do uuid}).
+ *   Se a instância já existe na Evolution, apenas reconecta e devolve
+ *   um QR novo em vez de estourar erro.
+ *
+ * INFRA (Railway):
+ *   Cada instância é uma conexão Baileys viva (~60-90MB RAM).
+ *   O container do Railway reinicia em cada deploy — se o volume não for
+ *   persistente, as sessões caem juntas. Por isso o job de saúde e a
+ *   reconexão automática são parte do desenho, não um extra.
+ *
+ * Secrets necessários:
+ *   EVOLUTION_API_URL      https://sua-evolution.up.railway.app
+ *   EVOLUTION_GLOBAL_KEY   chave global (AUTHENTICATION_API_KEY do Railway)
+ *
+ * Deploy:
+ *   npx supabase functions deploy provision-whatsapp
  */
-import { createClient } from 'jsr:@supabase/supabase-js@2'
 
-const EVOLUTION_URL = Deno.env.get('EVOLUTION_API_URL')!
-const EVOLUTION_KEY = Deno.env.get('EVOLUTION_GLOBAL_KEY')!
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+const json = (b: unknown, status = 200) =>
+  new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
+
+const EVOLUTION_URL = (Deno.env.get('EVOLUTION_API_URL') ?? '').replace(/\/+$/, '')
+const EVOLUTION_KEY = Deno.env.get('EVOLUTION_GLOBAL_KEY') ?? Deno.env.get('EVOLUTION_API_KEY') ?? ''
+const SUPABASE_URL  = Deno.env.get('SUPABASE_URL') ?? ''
+
+const slugify = (v: string) =>
+  v.toLowerCase()
+   .normalize('NFD').replace(/[̀-ͯ]/g, '')
+   .replace(/[^a-z0-9]+/g, '-')
+   .replace(/^-|-$/g, '')
+   .slice(0, 24)
+
+/** Chamada à Evolution com timeout — o Railway pode ter cold start. */
+async function evo(path: string, init: RequestInit = {}, timeoutMs = 20000) {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    return await fetch(`${EVOLUTION_URL}${path}`, {
+      ...init,
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_KEY, ...(init.headers ?? {}) },
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 Deno.serve(async (req) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, content-type',
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  const admin = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+
+  let tenantId = ''
 
   try {
-    // Autenticar como admin (service role)
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    if (!EVOLUTION_URL || !EVOLUTION_KEY) {
+      return json({ error: 'Evolution API não configurada nos secrets do Supabase' }, 500)
+    }
 
     const body = await req.json()
-    const { company_id, company_name } = body
+    tenantId = body.tenantId ?? body.tenant_id ?? ''
+    const force = body.force === true   // recria mesmo se já existir
 
-    if (!company_id || !company_name) {
-      return new Response(JSON.stringify({ error: 'company_id e company_name obrigatórios' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    if (!tenantId) return json({ error: 'tenantId obrigatório' }, 400)
 
-    // Nome da instância: autodetail-{slug da empresa}
-    const slug = company_name.toLowerCase()
-      .replace(/[^a-z0-9]/g, '-')
-      .replace(/-+/g, '-')
-      .substring(0, 30)
-    const instanceName = `autodetail-${slug}-${company_id.substring(0, 8)}`
+    /* ── Dados do tenant ── */
+    const { data: tenant } = await admin
+      .from('tenants').select('id, name, slug').eq('id', tenantId).maybeSingle()
 
-    // Verificar se já existe config para esta empresa
-    const { data: existing } = await supabase
+    if (!tenant) return json({ error: 'Tenant não encontrado' }, 404)
+
+    /* ── Config existente ── */
+    const { data: existing } = await admin
       .from('messaging_configs')
-      .select('id')
-      .eq('company_id', company_id)
-      .single()
+      .select('id, instance_name, status, webhook_token')
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
 
-    if (existing) {
-      return new Response(JSON.stringify({ message: 'Instância já configurada', instance: instanceName }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+    // Já conectado e não é força bruta → nada a fazer
+    if (existing?.status === 'connected' && !force) {
+      return json({ success: true, status: 'connected', instance: existing.instance_name,
+                    message: 'WhatsApp já está conectado' })
     }
 
-    // Criar instância no Evolution API
-    const createResp = await fetch(`${EVOLUTION_URL}/instance/create`, {
+    /* ── Nome determinístico da instância ── */
+    const base = slugify(tenant.slug || tenant.name)
+    const instanceName = existing?.instance_name ?? `aef-${base}-${tenantId.slice(0, 8)}`
+
+    const webhookToken = existing?.webhook_token ?? crypto.randomUUID().replace(/-/g, '')
+    const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-webhook?token=${webhookToken}`
+
+    /* ── Upsert da config em estado 'provisioning' ── */
+    await admin.from('messaging_configs').upsert({
+      tenant_id: tenantId,
+      channel: 'whatsapp',
+      instance_name: instanceName,
+      api_url: EVOLUTION_URL,
+      webhook_url: webhookUrl,
+      webhook_token: webhookToken,
+      status: 'provisioning',
+      is_active: false,
+    }, { onConflict: 'tenant_id' })
+
+    await admin.rpc('set_whatsapp_status', {
+      p_tenant_id: tenantId, p_status: 'provisioning',
+      p_detail: `Instância ${instanceName}`, p_event_type: 'provisioning',
+    }).then(() => {}, () => {})
+
+    /* ── 1. Cria a instância na Evolution ── */
+    let instanceKey = ''
+    const createRes = await evo('/instance/create', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_KEY },
       body: JSON.stringify({
         instanceName,
         integration: 'WHATSAPP-BAILEYS',
         qrcode: true,
         webhook: {
           enabled: true,
-          url: `${SUPABASE_URL}/functions/v1/whatsapp-webhook`,
-          events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
-        }
-      })
+          url: webhookUrl,
+          byEvents: false,
+          base64: true,
+          events: ['CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+        },
+      }),
     })
 
-    if (!createResp.ok) {
-      const err = await createResp.text()
-      throw new Error(`Evolution API error: ${err}`)
+    if (createRes.ok) {
+      const created = await createRes.json()
+      instanceKey = created?.hash?.apikey ?? created?.hash ?? created?.instance?.apikey ?? ''
+    } else {
+      const errText = await createRes.text()
+      // "already in use" não é erro: a instância existe, seguimos para o connect
+      const alreadyExists = /already|exists|in use/i.test(errText)
+      if (!alreadyExists) {
+        await admin.rpc('set_whatsapp_status', {
+          p_tenant_id: tenantId, p_status: 'error',
+          p_detail: errText.slice(0, 400), p_event_type: 'error',
+        }).then(() => {}, () => {})
+
+        await admin.from('messaging_configs').update({
+          retry_count: (existing ? 1 : 0),
+          next_retry_at: new Date(Date.now() + 60_000).toISOString(),
+        }).eq('tenant_id', tenantId)
+
+        return json({ error: 'Falha ao criar instância', detail: errText.slice(0, 300) }, 502)
+      }
     }
 
-    const instanceData = await createResp.json()
-    const instanceKey = instanceData.hash || instanceName
+    /* ── 2. Busca o QR Code ── */
+    const connectRes = await evo(`/instance/connect/${instanceName}`, { method: 'GET' })
+    const qrData = connectRes.ok ? await connectRes.json() : {}
 
-    // Salvar configuração no Supabase (NUNCA expostas ao frontend via RLS)
-    await supabase.from('messaging_configs').insert({
-      company_id,
-      provider: 'evolution',
-      instance_name: instanceName,
-      api_key: instanceKey,
-      base_url: EVOLUTION_URL,
-      active: true,
-    })
+    const qrBase64: string | null =
+      qrData?.base64 ?? qrData?.qrcode?.base64 ?? qrData?.qr ?? null
 
-    // Buscar QR code
-    const qrResp = await fetch(`${EVOLUTION_URL}/instance/connect/${instanceName}`, {
-      headers: { 'apikey': EVOLUTION_KEY }
-    })
-    const qrData = await qrResp.json()
+    // Já conectado? (acontece quando a instância existia e a sessão sobreviveu)
+    const alreadyOpen = qrData?.instance?.state === 'open' || qrData?.state === 'open'
 
-    return new Response(JSON.stringify({
+    /* ── 3. Persiste chave e estado ── */
+    const patch: Record<string, unknown> = {
+      status: alreadyOpen ? 'connected' : 'qr_pending',
+      is_active: alreadyOpen,
+      provisioned_at: new Date().toISOString(),
+      last_check_at: new Date().toISOString(),
+      retry_count: 0,
+      last_error: null,
+    }
+    if (instanceKey) patch.api_key = instanceKey
+    if (!alreadyOpen) {
+      patch.qr_code = qrBase64
+      patch.qr_expires_at = new Date(Date.now() + 60_000).toISOString()
+    } else {
+      patch.qr_code = null
+      patch.qr_expires_at = null
+      patch.connected_at = new Date().toISOString()
+    }
+
+    await admin.from('messaging_configs').update(patch).eq('tenant_id', tenantId)
+
+    await admin.rpc('set_whatsapp_status', {
+      p_tenant_id: tenantId,
+      p_status: alreadyOpen ? 'connected' : 'qr_pending',
+      p_detail: alreadyOpen ? 'Sessão já ativa' : 'QR Code gerado',
+      p_event_type: alreadyOpen ? 'connected' : 'qr_generated',
+    }).then(() => {}, () => {})
+
+    return json({
       success: true,
+      status: alreadyOpen ? 'connected' : 'qr_pending',
       instance: instanceName,
-      qrCode: qrData.base64 || null,
-      status: instanceData.instance?.status || 'connecting',
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      qrCode: alreadyOpen ? null : qrBase64,
+      qrExpiresAt: alreadyOpen ? null : new Date(Date.now() + 60_000).toISOString(),
     })
-
   } catch (err) {
-    console.error(err)
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    })
+    console.error('[provision-whatsapp]', err)
+
+    if (tenantId) {
+      await admin.rpc('set_whatsapp_status', {
+        p_tenant_id: tenantId, p_status: 'error',
+        p_detail: String(err).slice(0, 400), p_event_type: 'error',
+      }).then(() => {}, () => {})
+    }
+
+    return json({ error: 'Erro ao provisionar', detail: String(err).slice(0, 300) }, 500)
   }
 })
