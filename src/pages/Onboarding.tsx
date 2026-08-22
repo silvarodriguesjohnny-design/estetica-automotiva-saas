@@ -7,6 +7,7 @@ import {
   MapPin, CreditCard, Sparkles, ShieldCheck, Rocket, Eye, EyeOff, Check,
 } from 'lucide-react'
 import { getPriceId, type PlanId } from '@/config/plans'
+import { useCep } from '@/hooks/use-cep'
 
 /* ══════════════════════════════════════════════════════════════
    PLANOS  (espelham a Landing Page)
@@ -60,7 +61,6 @@ const formatPhone = (v: string) => {
   return d.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2')
 }
 
-const formatCep = (v: string) => onlyDigits(v).slice(0, 8).replace(/(\d{5})(\d)/, '$1-$2')
 
 const slugify = (v: string) =>
   v.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -110,7 +110,6 @@ export default function Onboarding() {
 
   // plano
   const [planId, setPlanId] = useState<string>(params.get('plan') ?? 'pro')
-  const [billing, setBilling] = useState<'trial' | 'now'>('trial')
 
   // empresa
   const [company, setCompany] = useState('')
@@ -124,7 +123,6 @@ export default function Onboarding() {
   const [ownerPhone, setOwnerPhone] = useState('')
 
   // endereço
-  const [cep, setCep] = useState('')
   const [rua, setRua] = useState('')
   const [numero, setNumero] = useState('')
   const [complemento, setComplemento] = useState('')
@@ -141,19 +139,11 @@ export default function Onboarding() {
     if (p && PLANS.some(x => x.id === p)) { setPlanId(p); setStep('company') }
   }, [params])
 
-  /* ── busca CEP ── */
-  useEffect(() => {
-    const d = onlyDigits(cep)
-    if (d.length !== 8) return
-    fetch(`https://viacep.com.br/ws/${d}/json/`)
-      .then(r => r.json())
-      .then(j => {
-        if (j.erro) return
-        setRua(j.logradouro ?? ''); setBairro(j.bairro ?? '')
-        setCidade(j.localidade ?? ''); setUf(j.uf ?? '')
-      })
-      .catch(() => {})
-  }, [cep])
+  /* ── busca CEP: BrasilAPI com fallback ViaCEP ── */
+  const cep = useCep(end => {
+    setRua(end.rua); setBairro(end.bairro)
+    setCidade(end.cidade); setUf(end.uf)
+  })
 
   /* ── validação por etapa ── */
   const valid = (() => {
@@ -190,7 +180,7 @@ export default function Onboarding() {
         body: JSON.stringify({
           email, password, fullName,
           company, cnpj, companyPhone, ownerPhone,
-          planId, cep, rua, numero, complemento, bairro, cidade, uf,
+          planId, cep: cep.value, rua, numero, complemento, bairro, cidade, uf,
         }),
       })
 
@@ -204,8 +194,13 @@ export default function Onboarding() {
 
       const tenantId: string = result.tenant.id
 
-      // 2. Pagamento imediato → Stripe
-      if (billing === 'now') {
+      /* 2. Checkout do Stripe — SEMPRE.
+         O trial de 14 dias vive no próprio Price (trial_period_days),
+         então o cartão é coletado agora mas a primeira cobrança só
+         acontece no 15º dia. Sem coletar o cartão, o trial vira um
+         beco sem saída: no fim do período não há como cobrar e o
+         cliente simplesmente perde o acesso. */
+      {
         try {
           const cRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
             method: 'POST',
@@ -389,9 +384,20 @@ export default function Onboarding() {
             subtitle="Ajuda seus clientes a te encontrarem.">
             <div className="space-y-4">
               <div className="grid sm:grid-cols-3 gap-4">
-                <Field label="CEP" hint="Preenchemos o resto">
-                  <Inp inputMode="numeric" placeholder="00000-000" value={cep}
-                    onChange={e => setCep(formatCep(e.target.value))} autoFocus />
+                <Field label="CEP" hint="Preenchemos o resto"
+                  error={cep.error ?? undefined}>
+                  <div className="relative">
+                    <Inp inputMode="numeric" placeholder="00000-000" value={cep.value}
+                      onChange={e => cep.setValue(e.target.value)} autoFocus
+                      className={cep.found ? 'border-green-400 pr-11' : 'pr-11'} />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      {cep.loading
+                        ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                        : cep.found
+                          ? <CheckCircle2 className="w-4 h-4 text-green-500" />
+                          : null}
+                    </div>
+                  </div>
                 </Field>
                 <div className="sm:col-span-2">
                   <Field label="Rua">
@@ -449,35 +455,47 @@ export default function Onboarding() {
               </div>
             </div>
 
-            {/* Opções */}
-            <div className="space-y-3">
-              <button onClick={() => setBilling('trial')}
-                className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-4 transition-all
-                  ${billing === 'trial' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0
-                  ${billing === 'trial' ? 'bg-blue-600' : 'bg-gray-100'}`}>
-                  <Rocket className={`w-5 h-5 ${billing === 'trial' ? 'text-white' : 'text-gray-500'}`} />
+            {/* ── Como funciona a cobrança ──
+                Card informativo, não escolha. O cartão é sempre coletado
+                para que a assinatura possa começar sozinha no 15º dia. */}
+            <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/50 p-5">
+              <div className="flex items-start gap-4">
+                <div className="w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center shrink-0">
+                  <Rocket className="w-5 h-5 text-white" />
                 </div>
-                <div className="min-w-0">
-                  <p className="font-bold text-gray-900">Começar com 14 dias grátis</p>
-                  <p className="text-sm text-gray-500">Sem cartão agora. Cobramos só depois do teste.</p>
+                <div className="flex-1">
+                  <p className="font-bold text-blue-900">14 dias grátis, depois {money(plan.price)}/mês</p>
+                  <p className="text-sm text-blue-700 mt-0.5">
+                    Você informa o cartão agora, mas nada é cobrado hoje.
+                  </p>
                 </div>
-                {billing === 'trial' && <CheckCircle2 className="w-5 h-5 text-blue-600 ml-auto shrink-0" />}
-              </button>
+              </div>
 
-              <button onClick={() => setBilling('now')}
-                className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-4 transition-all
-                  ${billing === 'now' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0
-                  ${billing === 'now' ? 'bg-blue-600' : 'bg-gray-100'}`}>
-                  <CreditCard className={`w-5 h-5 ${billing === 'now' ? 'text-white' : 'text-gray-500'}`} />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-bold text-gray-900">Assinar agora</p>
-                  <p className="text-sm text-gray-500">Ativa imediatamente via cartão ou Pix</p>
-                </div>
-                {billing === 'now' && <CheckCircle2 className="w-5 h-5 text-blue-600 ml-auto shrink-0" />}
-              </button>
+              {/* Linha do tempo */}
+              <div className="mt-5 space-y-3">
+                {[
+                  { dia: 'Hoje', txt: 'Acesso liberado. Cobrança: R$ 0,00', tone: 'green' },
+                  { dia: 'Dia 11', txt: 'Avisamos no WhatsApp que o teste está acabando', tone: 'blue' },
+                  { dia: 'Dia 15', txt: `Primeira cobrança de ${money(plan.price)}`, tone: 'gray' },
+                ].map((e, i) => (
+                  <div key={i} className="flex gap-3 items-start">
+                    <span className={`w-16 shrink-0 text-[11px] font-bold ${
+                      e.tone === 'green' ? 'text-green-600'
+                      : e.tone === 'blue' ? 'text-blue-600' : 'text-gray-400'}`}>
+                      {e.dia}
+                    </span>
+                    <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                      e.tone === 'green' ? 'bg-green-500'
+                      : e.tone === 'blue' ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                    <span className="text-xs text-gray-600 leading-relaxed">{e.txt}</span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-blue-700 mt-4 pt-3 border-t border-blue-200">
+                Cancele quando quiser em Configurações → Plano. Cancelando dentro dos
+                14 dias, você não paga nada.
+              </p>
             </div>
 
             <p className="flex items-start gap-2 text-xs text-gray-400 mt-5">
@@ -503,9 +521,7 @@ export default function Onboarding() {
                 flex items-center justify-center gap-2 disabled:opacity-40 ${accent.btn}`}>
               {saving
                 ? <><Loader2 className="w-5 h-5 animate-spin" />Criando sua conta…</>
-                : billing === 'now'
-                  ? <><CreditCard className="w-5 h-5" />Assinar e criar conta</>
-                  : <><Rocket className="w-5 h-5" />Começar 14 dias grátis</>}
+                : <><Rocket className="w-5 h-5" />Começar 14 dias grátis</>}
             </button>
           ) : (
             <button onClick={goNext} disabled={!valid}

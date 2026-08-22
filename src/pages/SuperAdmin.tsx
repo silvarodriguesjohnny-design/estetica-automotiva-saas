@@ -14,9 +14,10 @@ import {
   Building2, Pencil, Trash2, PowerOff, Power, Plus,
   ChevronRight, Mail, CreditCard, Eye, EyeOff,
   BarChart3, Key, Webhook, Save, Send, Wifi, WifiOff,
-  UserPlus, Link, QrCode, CheckCircle, XCircle
+  UserPlus, Link, QrCode, CheckCircle, XCircle, Smartphone
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import SuperAdminPWA from '@/components/SuperAdminPWA'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -379,6 +380,34 @@ function SectionUsuarios() {
     toast.success('Vínculo removido'); load()
   }
 
+  /* Exclusão definitiva do usuário.
+     Passa pela Edge Function porque remover de auth.users exige
+     service role — o frontend não tem (nem deve ter) esse poder. */
+  const handleDeleteUser = async (p: Profile) => {
+    if (p.id === session?.user?.id) {
+      toast.error('Você não pode excluir a própria conta')
+      return
+    }
+    const nome = p.full_name || p.email || 'este usuário'
+    if (!confirm(
+      `Excluir ${nome} definitivamente?\n\n` +
+      `A conta de acesso será removida e a pessoa perde o login imediatamente. ` +
+      `Esta ação não pode ser desfeita.`,
+    )) return
+
+    setSaving(true)
+    try {
+      await callEdge('delete_user', { user_id: p.id })
+      await supabase.from('profiles').delete().eq('id', p.id).then(() => {}, () => {})
+      toast.success(`${nome} foi excluído`)
+      load()
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Não foi possível excluir')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex gap-3 items-center justify-between">
@@ -414,6 +443,13 @@ function SectionUsuarios() {
                     <div className="flex items-center gap-1">
                       <button onClick={() => { setShowAssoc(p); setAssocTenant(p.tenant_id ?? '') }} className="p-1.5 rounded hover:bg-blue-50 text-blue-600" title="Associar empresa"><Link className="w-4 h-4"/></button>
                       {p.tenant_id && <button onClick={() => handleRemoveTenant(p)} className="p-1.5 rounded hover:bg-red-50 text-red-400" title="Remover empresa"><XCircle className="w-4 h-4"/></button>}
+                      <button
+                        onClick={() => handleDeleteUser(p)}
+                        disabled={saving || p.id === session?.user?.id}
+                        className="p-1.5 rounded hover:bg-red-50 text-red-500 disabled:opacity-25 disabled:cursor-not-allowed ml-auto"
+                        title={p.id === session?.user?.id ? 'Você não pode excluir a própria conta' : 'Excluir usuário'}>
+                        <Trash2 className="w-4 h-4"/>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -751,11 +787,12 @@ function SectionConfiguracoes() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-type Section = 'dashboard' | 'tenants' | 'usuarios' | 'integracoes' | 'configuracoes'
+type Section = 'dashboard' | 'tenants' | 'usuarios' | 'pwa' | 'integracoes' | 'configuracoes'
 const NAV: { id: Section; label: string; icon: any }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
   { id: 'tenants', label: 'Empresas', icon: Building2 },
   { id: 'usuarios', label: 'Usuários', icon: UserCheck },
+  { id: 'pwa', label: 'Agendas & PWA', icon: Smartphone },
   { id: 'integracoes', label: 'Integrações', icon: Plug },
   { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ]
@@ -808,6 +845,7 @@ export default function SuperAdmin() {
                 {section === 'dashboard' && 'Visão geral e risco de churn dos clientes'}
                 {section === 'tenants' && 'Gerencie todas as empresas da plataforma'}
                 {section === 'usuarios' && 'Usuários e suas associações a empresas'}
+                {section === 'pwa' && 'Gere QR Code, link e cartaz da agenda de cada estética'}
                 {section === 'integracoes' && 'Instâncias WhatsApp via Evolution API'}
                 {section === 'configuracoes' && 'Configurações globais da plataforma'}
               </p>
@@ -815,6 +853,7 @@ export default function SuperAdmin() {
             {section === 'dashboard' && <SectionDashboard/>}
             {section === 'tenants' && <SectionTenants/>}
             {section === 'usuarios' && <SectionUsuarios/>}
+            {section === 'pwa' && <SuperAdminPWA/>}
             {section === 'integracoes' && <SectionIntegracoes/>}
             {section === 'configuracoes' && <SectionConfiguracoes/>}
           </div>

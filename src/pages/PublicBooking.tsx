@@ -4,9 +4,10 @@ import { supabase } from '@/lib/supabase/client'
 import {
   Car, Clock, CheckCircle2, ArrowLeft, ArrowRight, User, Repeat,
   Sparkles, CreditCard, Store, Calendar as CalendarIcon, Loader2,
-  MessageCircle, ShieldCheck, Tag,
+  MessageCircle, ShieldCheck, Tag, MapPin, Search as SearchIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useCep } from '@/hooks/use-cep'
 
 /* ══════════════════════════════════════════════════════════════
    TYPES
@@ -237,6 +238,14 @@ export default function PublicBooking() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
 
+  // endereço — pedido apenas quando o cliente assina um plano
+  const [rua, setRua] = useState('')
+  const [numero, setNumero] = useState('')
+  const [complemento, setComplemento] = useState('')
+  const [bairro, setBairro] = useState('')
+  const [cidadeEnd, setCidadeEnd] = useState('')
+  const [uf, setUf] = useState('')
+
   // veículo
   const [savedVehicles, setSavedVehicles] = useState<Vehicle[]>([])
   const [vehicleId, setVehicleId] = useState<string | null>(null)
@@ -263,6 +272,17 @@ export default function PublicBooking() {
   const [activeSub, setActiveSub] = useState<ActiveSub | null>(null)
 
   usePWA(tenant)
+
+  /* Preenchimento automático por CEP.
+     Dispara sozinho quando o CEP fica completo — o cliente não
+     precisa clicar em nada nem sair do campo. */
+  const cep = useCep(end => {
+    setRua(end.rua)
+    setBairro(end.bairro)
+    setCidadeEnd(end.cidade)
+    setUf(end.uf)
+    if (end.complemento && !complemento) setComplemento(end.complemento)
+  })
 
   /* ── carregar dados do tenant ── */
   useEffect(() => {
@@ -383,9 +403,18 @@ export default function PublicBooking() {
       // 1. Cliente
       let cid = customer?.id
       if (!cid) {
+        const enderecoCompleto = [
+          rua && numero ? `${rua}, ${numero}` : rua,
+          complemento, bairro,
+          cidadeEnd && uf ? `${cidadeEnd}/${uf}` : cidadeEnd,
+        ].filter(Boolean).join(' · ')
+
         const { data: newC, error } = await supabase.from('customers').insert({
           tenant_id: tenantId, name, phone: onlyDigits(phone),
           email: email || null, cpf_cnpj: onlyDigits(doc),
+          notes: enderecoCompleto
+            ? `Endereço: ${enderecoCompleto}${cep.value ? ` · CEP ${cep.value}` : ''}`
+            : null,
         }).select('id').single()
         if (error) throw error
         cid = newC.id
@@ -684,6 +713,7 @@ export default function PublicBooking() {
                 <TInput type="email" placeholder="seu@email.com" value={email}
                   onChange={e => setEmail(e.target.value)} />
               </Field>
+
             </div>
           </Section>
         )}
@@ -975,6 +1005,84 @@ export default function PublicBooking() {
                 {payWhen === 'local' && <CheckCircle2 className="w-5 h-5 text-blue-600 ml-auto shrink-0" />}
               </button>
             </div>
+          {/* ── Endereço de cobrança ──
+              Pedido só aqui, e só para assinatura: numa lavagem avulsa
+              seria fricção desnecessária. Nesta etapa já sabemos que o
+              cliente escolheu um plano recorrente. */}
+          {offerKind === 'plan' && payWhen !== 'subscription' && (
+            <div className="mt-5 p-5 bg-gray-50 rounded-2xl space-y-4">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-blue-600" />
+                  <p className="text-sm font-bold text-gray-800">Endereço de cobrança</p>
+                  <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">
+                    assinatura
+                  </span>
+                </div>
+
+                <Field label="CEP" hint="Preenchemos o resto automaticamente">
+                  <div className="relative">
+                    <TInput inputMode="numeric" placeholder="00000-000"
+                      value={cep.value} onChange={e => cep.setValue(e.target.value)}
+                      className={cep.found ? 'border-green-400 pr-12' : 'pr-12'} />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                      {cep.loading
+                        ? <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                        : cep.found
+                          ? <CheckCircle2 className="w-5 h-5 text-green-500" />
+                          : <SearchIcon className="w-5 h-5 text-gray-300" />}
+                    </div>
+                  </div>
+                  {cep.error && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <p className="text-xs text-amber-600">{cep.error}</p>
+                      {cep.complete && (
+                        <button onClick={cep.retry}
+                          className="text-xs text-blue-600 underline underline-offset-2">
+                          tentar de novo
+                        </button>
+                    )}
+                    </div>
+                )}
+                </Field>
+
+                {/* Os campos aparecem depois que o CEP responde,
+                    ou se o cliente quiser preencher na mão. */}
+                {(cep.found || cep.error || rua) && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <Field label="Rua">
+                      <TInput placeholder="Av. Paulista" value={rua}
+                        onChange={e => setRua(e.target.value)} />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Número">
+                        <TInput inputMode="numeric" placeholder="1000" value={numero}
+                          onChange={e => setNumero(e.target.value)} autoFocus={cep.found} />
+                      </Field>
+                      <Field label="Complemento">
+                        <TInput placeholder="Apto 12" value={complemento}
+                          onChange={e => setComplemento(e.target.value)} />
+                      </Field>
+                    </div>
+                    <Field label="Bairro">
+                      <TInput placeholder="Bela Vista" value={bairro}
+                        onChange={e => setBairro(e.target.value)} />
+                    </Field>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="col-span-2">
+                        <Field label="Cidade">
+                          <TInput placeholder="São Paulo" value={cidadeEnd}
+                            onChange={e => setCidadeEnd(e.target.value)} />
+                        </Field>
+                      </div>
+                      <Field label="UF">
+                        <TInput placeholder="SP" maxLength={2} value={uf}
+                          onChange={e => setUf(e.target.value.toUpperCase())} />
+                      </Field>
+                    </div>
+                  </div>
+              )}
+              </div>
+          )}
           </Section>
         )}
       </main>

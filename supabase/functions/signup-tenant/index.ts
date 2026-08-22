@@ -35,6 +35,62 @@ const slugify = (v: string) =>
    .replace(/^-|-$/g, '')
    .slice(0, 40)
 
+/* ── Templates de WhatsApp que a estética já recebe prontos ──
+   O dono não precisa escrever nada: entra no sistema e as mensagens
+   dos momentos mais comuns já existem, com o nome dele nas variáveis.
+   Ele só ajusta o tom se quiser. Isso é o que faz o WhatsApp sair do
+   "vou configurar depois" para "já está funcionando". */
+const DEFAULT_TEMPLATES = [
+  {
+    name: 'Confirmação de agendamento',
+    category: 'confirmacao',
+    content: 'Olá, {nome}! ✅\n\nSeu horário na *{empresa}* está confirmado!\n\n🚗 Veículo: {veiculo}\n📅 {data} às {hora}\n\nQualquer imprevisto, é só chamar aqui. Até breve!',
+    variables: ['{nome}', '{empresa}', '{veiculo}', '{data}', '{hora}'],
+  },
+  {
+    name: 'Lembrete — véspera',
+    category: 'lembrete',
+    content: 'Oi, {nome}! 👋\n\nPassando para lembrar do seu horário amanhã na *{empresa}*:\n\n📅 {data} às {hora}\n🚗 {veiculo}\n\nSe precisar remarcar, me avisa por aqui. 😉',
+    variables: ['{nome}', '{empresa}', '{veiculo}', '{data}', '{hora}'],
+  },
+  {
+    name: 'Veículo em atendimento',
+    category: 'geral',
+    content: 'Olá, {nome}! 🔧\n\nSeu *{veiculo}* já está em atendimento aqui na {empresa}.\n\nAviso assim que estiver pronto! 🚀',
+    variables: ['{nome}', '{empresa}', '{veiculo}'],
+  },
+  {
+    name: 'Serviço concluído',
+    category: 'geral',
+    content: 'Olá, {nome}! 🎉\n\nSeu *{veiculo}* está pronto para retirada!\n\n💰 Total: {valor}\n\nObrigado pela confiança. Volte sempre! ⭐',
+    variables: ['{nome}', '{veiculo}', '{valor}'],
+  },
+  {
+    name: 'Reativação — sentimos sua falta',
+    category: 'reativacao',
+    content: 'Olá, {nome}! 🚗\n\nFaz um tempo que seu carro não passa aqui na *{empresa}*.\n\nQue tal dar aquele trato nele? Temos condições especiais para você voltar. Responda aqui que eu te encaixo. 😊',
+    variables: ['{nome}', '{empresa}'],
+  },
+  {
+    name: 'Pesquisa de satisfação',
+    category: 'geral',
+    content: 'Oi, {nome}! 😊\n\nComo foi sua experiência na *{empresa}*?\n\nResponda com uma nota de 1 a 5 — leva 5 segundos e ajuda demais a gente a melhorar. 🙏',
+    variables: ['{nome}', '{empresa}'],
+  },
+  {
+    name: 'Aniversário do cliente',
+    category: 'aniversario',
+    content: '🎂 Parabéns, {nome}!\n\nA equipe da *{empresa}* deseja um feliz aniversário!\n\nDe presente, um desconto especial no seu próximo serviço. É só mencionar esta mensagem. 🎁',
+    variables: ['{nome}', '{empresa}'],
+  },
+  {
+    name: 'Promoção do mês',
+    category: 'promocao',
+    content: 'Olá, {nome}! 🎁\n\n*{titulo}*\n\nDesconto de {desconto}% válido até {validade}.\n\nQuer garantir? Responda aqui que eu reservo seu horário. 🚗✨',
+    variables: ['{nome}', '{titulo}', '{desconto}', '{validade}'],
+  },
+]
+
 const DEFAULT_SERVICES = [
   { name: 'Lavagem Simples',        description: 'Lavagem externa completa',            price: 50,   duration_minutes: 60,  category: 'lavagem' },
   { name: 'Lavagem Completa',       description: 'Lavagem externa + interna',           price: 120,  duration_minutes: 120, category: 'lavagem' },
@@ -126,7 +182,31 @@ Deno.serve(async (req) => {
       DEFAULT_SERVICES.map(s => ({ ...s, tenant_id: tenant.id, is_active: true })),
     ).then(() => {}, () => {})
 
-    /* ── 5. Provisionamento do WhatsApp (assíncrono, não bloqueante) ──
+    /* ── 5. Templates de WhatsApp prontos ──
+       Nenhum deles bloqueia o cadastro se falhar. */
+    await admin.from('message_templates').insert(
+      DEFAULT_TEMPLATES.map(t => ({
+        ...t,
+        tenant_id: tenant.id,
+        is_global: false,
+        active: true,
+      })),
+    ).then(() => {}, () => {})
+
+    /* ── 6. Automação de reativação já configurada (desligada) ──
+       Nasce pronta mas inativa: o dono decide quando ligar, depois
+       de conectar o WhatsApp. Ligar sozinho seria enviar mensagem
+       em nome dele sem autorização. */
+    await admin.from('campaign_automations').insert({
+      tenant_id: tenant.id,
+      name: 'Reativação de clientes inativos',
+      segment_type: 'inactive_45d',
+      frequency: 'monthly',
+      is_active: false,
+      message: `Olá, {nome}! 🚗\n\nFaz um tempo que seu carro não passa aqui na *${company.trim()}*.\n\nQue tal dar aquele trato nele? Temos condições especiais para você voltar. 😊`,
+    }).then(() => {}, () => {})
+
+    /* ── 7. Provisionamento do WhatsApp (assíncrono, não bloqueante) ──
        Dispara a criação da instância Evolution em paralelo. Se falhar,
        o tenant nasce usando o número global de fallback e o dono pode
        tentar de novo em Configurações → WhatsApp. Um problema de infra
