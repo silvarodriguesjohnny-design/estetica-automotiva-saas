@@ -267,6 +267,7 @@ export default function PublicBooking() {
   // pagamento
   const [payWhen, setPayWhen] = useState<'now' | 'local' | 'subscription'>('local')
   const [payError, setPayError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   /* A estética precisa ter ligado o pagamento online E ter a conta
      Stripe apta. Sem as duas coisas, mostrar "Pagar agora" é vender
      algo que não funciona — pior que não oferecer. */
@@ -294,10 +295,10 @@ export default function PublicBooking() {
     if (!tenantId) return
     ;(async () => {
       const [t, s, p] = await Promise.all([
-        supabase.from('tenants').select('id, name, logo_url, cidade, phone, online_payments_enabled, stripe_charges_enabled').eq('id', tenantId).single(),
-        supabase.from('services').select('id, name, description, price, duration_minutes, category')
+        supabase.from('tenants').select('*').eq('id', tenantId).maybeSingle(),
+        supabase.from('services').select('*')
           .eq('tenant_id', tenantId).eq('is_active', true).order('price'),
-        supabase.from('subscription_plans').select('id, name, description, price, interval, sessions, services')
+        supabase.from('subscription_plans').select('*')
           .eq('tenant_id', tenantId).eq('is_active', true).order('price'),
       ])
       const tRow = t.data as Tenant & {
@@ -312,11 +313,19 @@ export default function PublicBooking() {
          então "0 resultados" e "sem permissão" são indistinguíveis
          no comportamento. Logar as duas coisas separa os casos. */
       console.info('[agenda]', {
-        tenant: t.error ? `ERRO: ${t.error.message}` : (t.data ? 'ok' : 'não encontrado'),
+        tenant: t.error ? `ERRO ${t.error.code}: ${t.error.message}` : (t.data ? 'ok' : 'não encontrado'),
         servicos: s.error ? `ERRO: ${s.error.message}` : (s.data?.length ?? 0),
         planos: p.error ? `ERRO: ${p.error.message}` : (p.data?.length ?? 0),
         tenantId,
       })
+
+      /* Se QUALQUER uma das três falhou, o cliente precisa saber —
+         e eu preciso do código do erro. 400 aqui é sempre schema ou
+         RLS, nunca "não tem dado". */
+      const falha = t.error ?? s.error ?? p.error
+      if (falha) {
+        setLoadError(`${falha.code ?? 'erro'}: ${falha.message}`)
+      }
 
       setLoading(false)
     })()
@@ -620,6 +629,21 @@ export default function PublicBooking() {
           <Car className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-gray-700">Estética não encontrada</h1>
           <p className="text-gray-400 mt-1">Verifique o link de agendamento.</p>
+
+          {/* Detalhe técnico visível: uma tela pública que esconde a
+              causa do erro transfere o custo do diagnóstico para
+              quem menos pode pagá-lo — o dono da loja, no balcão,
+              com o cliente esperando. */}
+          {loadError && (
+            <details className="mt-6 text-left inline-block max-w-md">
+              <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
+                Detalhes técnicos
+              </summary>
+              <pre className="mt-2 p-3 bg-gray-100 rounded-lg text-[11px] text-gray-600 whitespace-pre-wrap break-all">
+                {loadError}
+              </pre>
+            </details>
+          )}
         </div>
       </div>
     )

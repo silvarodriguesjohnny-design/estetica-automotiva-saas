@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import WhatsAppConnect from '@/components/WhatsAppConnect'
 import StripeConnect from '@/components/StripeConnect'
+import PlanUpgrade from '@/components/PlanUpgrade'
 import QRCode, { downloadQRCode } from '@/components/QRCode'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -228,20 +229,7 @@ export default function Settings() {
                   ))}
                 </div>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm font-semibold">Fazer upgrade</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {PLANS.filter(p => p.id !== tenant?.plan_type).map(p => (
-                    <div key={p.id} className="p-3 border border-border rounded-lg">
-                      <p className="font-semibold text-sm">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">R$ {p.price}/mês</p>
-                      <Button size="sm" className="mt-2 w-full" variant="outline">
-                        Fazer upgrade
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <PlanUpgrade />
             </CardContent>
           </Card>
         </TabsContent>
