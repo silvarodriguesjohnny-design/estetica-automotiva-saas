@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '@/lib/supabase/client'
+import { supabasePublic as supabase } from '@/lib/supabase/public-client'
 import {
   Car, Clock, CheckCircle2, ArrowLeft, ArrowRight, User, Repeat,
   Sparkles, CreditCard, Store, Calendar as CalendarIcon, Loader2,
-  MessageCircle, ShieldCheck, Tag, MapPin, Search as SearchIcon,
+  MessageCircle, ShieldCheck, Tag, MapPin, Search as SearchIcon, AlertCircle
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCep } from '@/hooks/use-cep'
@@ -266,6 +266,11 @@ export default function PublicBooking() {
 
   // pagamento
   const [payWhen, setPayWhen] = useState<'now' | 'local' | 'subscription'>('local')
+  const [payError, setPayError] = useState<string | null>(null)
+  /* A estética precisa ter ligado o pagamento online E ter a conta
+     Stripe apta. Sem as duas coisas, mostrar "Pagar agora" é vender
+     algo que não funciona — pior que não oferecer. */
+  const [onlinePayOn, setOnlinePayOn] = useState(false)
   const [bookingRef, setBookingRef] = useState('')
 
   // assinatura ativa do cliente
@@ -289,15 +294,30 @@ export default function PublicBooking() {
     if (!tenantId) return
     ;(async () => {
       const [t, s, p] = await Promise.all([
-        supabase.from('tenants').select('id, name, logo_url, cidade, phone').eq('id', tenantId).single(),
+        supabase.from('tenants').select('id, name, logo_url, cidade, phone, online_payments_enabled, stripe_charges_enabled').eq('id', tenantId).single(),
         supabase.from('services').select('id, name, description, price, duration_minutes, category')
           .eq('tenant_id', tenantId).eq('is_active', true).order('price'),
         supabase.from('subscription_plans').select('id, name, description, price, interval, sessions, services')
           .eq('tenant_id', tenantId).eq('is_active', true).order('price'),
       ])
-      setTenant(t.data as Tenant)
+      const tRow = t.data as Tenant & {
+        online_payments_enabled?: boolean; stripe_charges_enabled?: boolean
+      }
+      setTenant(tRow as Tenant)
+      setOnlinePayOn(!!tRow?.online_payments_enabled && !!tRow?.stripe_charges_enabled)
       setServices((s.data as Service[]) ?? [])
       setPlans((p.data as Plan[]) ?? [])
+
+      /* Diagnóstico no console: RLS devolve lista vazia sem erro,
+         então "0 resultados" e "sem permissão" são indistinguíveis
+         no comportamento. Logar as duas coisas separa os casos. */
+      console.info('[agenda]', {
+        tenant: t.error ? `ERRO: ${t.error.message}` : (t.data ? 'ok' : 'não encontrado'),
+        servicos: s.error ? `ERRO: ${s.error.message}` : (s.data?.length ?? 0),
+        planos: p.error ? `ERRO: ${p.error.message}` : (p.data?.length ?? 0),
+        tenantId,
+      })
+
       setLoading(false)
     })()
   }, [tenantId])
@@ -530,11 +550,27 @@ export default function PublicBooking() {
               customerEmail: email || undefined,
             }),
           })
-          const { url } = await res.json()
-          if (url) { window.location.href = url; return }
-          toast.info('Não foi possível abrir o pagamento online. Você pode pagar no local.')
-        } catch {
-          toast.info('Pagamento online indisponível. Você pode pagar no local.')
+          /* Ler como texto primeiro: quando a Edge Function estoura
+             antes de montar o JSON (secret faltando, RLS, Stripe fora),
+             a resposta vem em texto puro e o .json() quebraria aqui,
+             mascarando a causa real com um erro de parse. */
+          const raw = await res.text()
+          let payload: { url?: string; error?: string; detail?: string } = {}
+          try { payload = JSON.parse(raw) } catch { payload = { error: raw.slice(0, 200) } }
+
+          if (payload.url) { window.location.href = payload.url; return }
+
+          console.error('[checkout]', res.status, payload)
+          setPayError(payload.error ?? payload.detail ?? `Erro ${res.status}`)
+          toast.error(payload.error ?? 'Não foi possível abrir o pagamento online.')
+          setSaving(false)
+          return   // não marca como concluído: o cliente escolheu pagar agora
+        } catch (err) {
+          console.error('[checkout]', err)
+          setPayError('Não conseguimos falar com o sistema de pagamento.')
+          toast.error('Pagamento online indisponível no momento.')
+          setSaving(false)
+          return
         }
       }
 
@@ -977,7 +1013,8 @@ export default function PublicBooking() {
                 </div>
               )}
 
-              <button onClick={() => setPayWhen('now')}
+              {onlinePayOn && (
+              <button onClick={() => { setPayWhen('now'); setPayError(null) }}
                 className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-4 transition-all
                   ${payWhen === 'now' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0
@@ -990,8 +1027,25 @@ export default function PublicBooking() {
                 </div>
                 {payWhen === 'now' && <CheckCircle2 className="w-5 h-5 text-blue-600 ml-auto shrink-0" />}
               </button>
+              )}
 
-              <button onClick={() => setPayWhen('local')}
+              {/* Falha no checkout: dizemos o que houve e oferecemos
+                  a saída óbvia, em vez de deixar o cliente travado. */}
+              {payError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-800 flex gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Pagamento online indisponível</p>
+                    <p className="text-red-700 mt-0.5">{payError}</p>
+                    <button onClick={() => { setPayWhen('local'); setPayError(null) }}
+                      className="underline font-semibold mt-1">
+                      Continuar e pagar no local
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <button onClick={() => { setPayWhen('local'); setPayError(null) }}
                 className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-4 transition-all
                   ${payWhen === 'local' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0

@@ -76,9 +76,41 @@ Deno.serve(async (req) => {
       return json({ error: 'Evolution API não configurada nos secrets do Supabase' }, 500)
     }
 
-    const body = await req.json()
-    tenantId = body.tenantId ?? body.tenant_id ?? ''
+    const body = await req.json().catch(() => ({}))
     const force = body.force === true   // recria mesmo se já existir
+
+    /* ── De onde vem o tenantId ──
+       Dois caminhos legítimos chamam esta função:
+
+       1. O dono da estética, pelo botão em Configurações → WhatsApp.
+          Nesse caso vem um JWT de usuário e o tenant sai do profile —
+          nunca do body, senão qualquer um provisiona instância para
+          outra empresa.
+
+       2. A signup-tenant, logo após criar a conta. Aí vem a service
+          role key e o tenantId no body, porque ainda não existe
+          sessão de usuário.                                        */
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const token = authHeader.replace(/^Bearer\s+/i, '')
+    const isServiceRole = token === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+    if (isServiceRole) {
+      tenantId = body.tenantId ?? body.tenant_id ?? ''
+    } else {
+      const userClient = createClient(
+        SUPABASE_URL,
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } },
+      )
+      const { data: { user } } = await userClient.auth.getUser()
+      if (!user) return json({ error: 'Não autorizado' }, 401)
+
+      const { data: profile } = await admin
+        .from('profiles').select('tenant_id').eq('id', user.id).maybeSingle()
+
+      tenantId = profile?.tenant_id ?? ''
+      if (!tenantId) return json({ error: 'Usuário sem empresa vinculada' }, 403)
+    }
 
     if (!tenantId) return json({ error: 'tenantId obrigatório' }, 400)
 

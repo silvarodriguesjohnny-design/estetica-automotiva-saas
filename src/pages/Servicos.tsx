@@ -22,7 +22,7 @@ interface Service {
   description: string | null
   duration_minutes: number
   price: number
-  active: boolean
+  is_active: boolean
 }
 
 const SERVICE_TYPES = [
@@ -103,8 +103,8 @@ export default function Servicos() {
   }
 
   async function toggleActive(s: Service) {
-    await supabase.from('services').update({ active: !s.active }).eq('id', s.id)
-    toast.success(s.active ? 'Serviço desativado' : 'Serviço ativado')
+    await supabase.from('services').update({ is_active: !s.is_active }).eq('id', s.id)
+    toast.success(s.is_active ? 'Serviço desativado' : 'Serviço ativado')
     fetchServices()
   }
 
@@ -114,12 +114,12 @@ export default function Servicos() {
     return matchSearch && matchType
   })
 
-  const activeCount = services.filter(s => s.active).length
-  const avgPrice = services.filter(s => s.active).length > 0
-    ? services.filter(s => s.active).reduce((sum, s) => sum + s.price, 0) / services.filter(s => s.active).length
+  const activeCount = services.filter(s => s.is_active).length
+  const avgPrice = services.filter(s => s.is_active).length > 0
+    ? services.filter(s => s.is_active).reduce((sum, s) => sum + s.price, 0) / services.filter(s => s.is_active).length
     : 0
-  const avgDuration = services.filter(s => s.active).length > 0
-    ? services.filter(s => s.active).reduce((sum, s) => sum + s.duration_minutes, 0) / services.filter(s => s.active).length
+  const avgDuration = services.filter(s => s.is_active).length > 0
+    ? services.filter(s => s.is_active).reduce((sum, s) => sum + s.duration_minutes, 0) / services.filter(s => s.is_active).length
     : 0
 
   return (
@@ -181,7 +181,7 @@ export default function Servicos() {
         ) : filtered.length === 0 ? (
           <p className="col-span-3 text-center py-8 text-gray-400">Nenhum serviço encontrado</p>
         ) : filtered.map(s => (
-          <div key={s.id} className={`bg-white rounded-xl border p-5 space-y-3 transition-opacity ${!s.active ? 'opacity-50' : ''}`}>
+          <div key={s.id} className={`bg-white rounded-xl border p-5 space-y-3 transition-opacity ${!s.is_active ? 'opacity-50' : ''}`}>
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h3 className="font-semibold text-gray-900">{s.name}</h3>
@@ -189,7 +189,7 @@ export default function Servicos() {
                   {SERVICE_TYPES.find(t=>t.value===s.type)?.label || s.type}
                 </Badge>
               </div>
-              <Switch checked={s.active} onCheckedChange={()=>toggleActive(s)}/>
+              <Switch checked={s.is_active} onCheckedChange={()=>toggleActive(s)}/>
             </div>
             {s.description && <p className="text-sm text-gray-500">{s.description}</p>}
             <div className="flex items-center justify-between pt-1 border-t">
@@ -227,13 +227,13 @@ export default function Servicos() {
             </TableHeader>
             <TableBody>
               {filtered.map(s=>(
-                <TableRow key={`tbl-${s.id}`} className={!s.active ? 'opacity-50' : undefined}>
+                <TableRow key={`tbl-${s.id}`} className={!s.is_active ? 'opacity-50' : undefined}>
                   <TableCell className="font-medium">{s.name}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{SERVICE_TYPES.find(t=>t.value===s.type)?.label || s.type}</Badge></TableCell>
                   <TableCell className="text-gray-600">{formatDuration(s.duration_minutes)}</TableCell>
                   <TableCell className="font-semibold text-green-700">{s.price.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</TableCell>
                   <TableCell>
-                    <Switch checked={s.active} onCheckedChange={()=>toggleActive(s)}/>
+                    <Switch checked={s.is_active} onCheckedChange={()=>toggleActive(s)}/>
                   </TableCell>
                   <TableCell className="text-right">
                     <Button size="icon" variant="ghost" onClick={()=>openEdit(s)}><Pencil className="w-4 h-4"/></Button>

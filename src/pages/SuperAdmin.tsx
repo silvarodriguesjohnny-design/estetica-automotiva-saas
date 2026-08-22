@@ -14,9 +14,10 @@ import {
   Building2, Pencil, Trash2, PowerOff, Power, Plus,
   ChevronRight, Mail, CreditCard, Eye, EyeOff,
   BarChart3, Key, Webhook, Save, Send, Wifi, WifiOff,
-  UserPlus, Link, QrCode, CheckCircle, XCircle, Smartphone
+  UserPlus, Link, QrCode, CheckCircle, XCircle, Smartphone, Landmark
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import SuperAdminPagamentos from '@/components/SuperAdminPagamentos'
 import SuperAdminPWA from '@/components/SuperAdminPWA'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -793,6 +794,7 @@ const NAV: { id: Section; label: string; icon: any }[] = [
   { id: 'tenants', label: 'Empresas', icon: Building2 },
   { id: 'usuarios', label: 'Usuários', icon: UserCheck },
   { id: 'pwa', label: 'Agendas & PWA', icon: Smartphone },
+  { id: 'pagamentos', label: 'Recebimentos', icon: Landmark },
   { id: 'integracoes', label: 'Integrações', icon: Plug },
   { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ]
@@ -846,6 +848,7 @@ export default function SuperAdmin() {
                 {section === 'tenants' && 'Gerencie todas as empresas da plataforma'}
                 {section === 'usuarios' && 'Usuários e suas associações a empresas'}
                 {section === 'pwa' && 'Gere QR Code, link e cartaz da agenda de cada estética'}
+                {section === 'pagamentos' && 'Contas Stripe, dados bancários e comissão da plataforma'}
                 {section === 'integracoes' && 'Instâncias WhatsApp via Evolution API'}
                 {section === 'configuracoes' && 'Configurações globais da plataforma'}
               </p>
@@ -854,6 +857,7 @@ export default function SuperAdmin() {
             {section === 'tenants' && <SectionTenants/>}
             {section === 'usuarios' && <SectionUsuarios/>}
             {section === 'pwa' && <SuperAdminPWA/>}
+            {section === 'pagamentos' && <SuperAdminPagamentos/>}
             {section === 'integracoes' && <SectionIntegracoes/>}
             {section === 'configuracoes' && <SectionConfiguracoes/>}
           </div>

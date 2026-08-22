@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import WhatsAppConnect from '@/components/WhatsAppConnect'
 import StripeConnect from '@/components/StripeConnect'
+import QRCode, { downloadQRCode } from '@/components/QRCode'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -141,10 +142,12 @@ export default function Settings() {
 
               <div className="grid sm:grid-cols-[auto,1fr] gap-5 items-start pt-2">
                 <div className="p-3 bg-white rounded-xl border">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(bookingUrl)}`}
-                    alt="QR Code da agenda" className="w-44 h-44" />
-                  <p className="text-[10px] text-center text-muted-foreground mt-2">Aponte a câmera</p>
+                  <QRCode value={bookingUrl} size={176} />
+                  <button
+                    onClick={() => downloadQRCode(bookingUrl, `qrcode-${tenant?.slug ?? 'agenda'}`, 600)}
+                    className="text-[10px] text-center text-blue-600 hover:underline mt-2 w-full">
+                    Baixar PNG
+                  </button>
                 </div>
                 <div className="space-y-3">
                   <div>

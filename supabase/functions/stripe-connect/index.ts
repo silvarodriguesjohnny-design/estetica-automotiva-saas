@@ -46,6 +46,30 @@ function mapStatus(acct: Stripe.Account): string {
   return 'onboarding'
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Espelho dos dados bancários
+
+   Só guardamos o que o Stripe já expõe como não-sensível:
+   últimos 4 dígitos, banco, agência e titular. O número completo
+   da conta NUNCA sai do Stripe — se ele nunca entra no nosso banco,
+   ele não pode vazar do nosso banco. É a mesma lógica de tokenização
+   que se usa com cartão: você não protege o dado, você deixa de tê-lo.
+   ══════════════════════════════════════════════════════════════ */
+function bankPatch(acct: Stripe.Account): Record<string, unknown> {
+  const ext = (acct.external_accounts?.data ?? [])
+    .find(a => a.object === 'bank_account') as Stripe.BankAccount | undefined
+
+  if (!ext) return { bank_synced_at: new Date().toISOString() }
+
+  return {
+    bank_last4:       ext.last4 ?? null,
+    bank_name:        ext.bank_name ?? null,
+    bank_routing:     ext.routing_number ?? null,
+    bank_holder_name: ext.account_holder_name ?? acct.business_profile?.name ?? null,
+    bank_synced_at:   new Date().toISOString(),
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
@@ -158,7 +182,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    const acct = await stripe.accounts.retrieve(tenant.stripe_account_id)
+    const acct = await stripe.accounts.retrieve(tenant.stripe_account_id, {
+      expand: ['external_accounts'],
+    })
     const status = mapStatus(acct)
 
     const patch: Record<string, unknown> = {
@@ -175,6 +201,12 @@ Deno.serve(async (req) => {
     if (status === 'active' && tenant.stripe_account_status !== 'active') {
       patch.stripe_connected_at = new Date().toISOString()
     }
+
+    /* Espelha os dados bancários a cada consulta de status.
+       Não é um job separado de sincronização porque o status já é
+       consultado toda vez que a aba Pagamentos abre — pendurar aqui
+       significa zero infraestrutura nova e dado sempre fresco. */
+    Object.assign(patch, bankPatch(acct))
 
     await admin.from('tenants').update(patch).eq('id', tenantId)
 

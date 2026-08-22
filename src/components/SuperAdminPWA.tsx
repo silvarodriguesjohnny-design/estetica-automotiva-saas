@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
+import QRCode, { downloadQRCode, qrDataUrl } from '@/components/QRCode'
 import {
   Smartphone, QrCode, Copy, ExternalLink, Download, Search,
   CheckCircle2, Tablet, Share2, MessageCircle, X, Printer, Store,
@@ -34,8 +35,6 @@ interface Tenant {
   is_active: boolean
 }
 
-const qrUrl = (data: string, size = 240) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&data=${encodeURIComponent(data)}`
 
 export default function SuperAdminPWA() {
   const [tenants, setTenants] = useState<Tenant[]>([])
@@ -68,24 +67,16 @@ export default function SuperAdminPWA() {
 
   /* ── Baixa o QR como PNG ── */
   const downloadQR = async (t: Tenant) => {
-    try {
-      const res = await fetch(qrUrl(linkOf(t), 600))
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `qrcode-agenda-${(t.slug ?? t.name).replace(/[^a-z0-9]/gi, '-').toLowerCase()}.png`
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success('QR Code baixado!')
-    } catch {
-      toast.error('Não foi possível baixar. Use o botão direito na imagem.')
-    }
+    const nome = `qrcode-agenda-${(t.slug ?? t.name).replace(/[^a-z0-9]/gi, '-').toLowerCase()}`
+    const ok = await downloadQRCode(linkOf(t), nome, 600)
+    toast[ok ? 'success' : 'error'](ok ? 'QR Code baixado!' : 'Não foi possível gerar o arquivo')
   }
 
   /* ── Cartaz A5 pronto para impressão ── */
-  const printPoster = (t: Tenant) => {
+  const printPoster = async (t: Tenant) => {
     const link = linkOf(t)
+    const qrImg = await qrDataUrl(link, 420)
+    if (!qrImg) { toast.error('Não foi possível gerar o QR do cartaz'); return }
     const win = window.open('', '_blank', 'width=760,height=1000')
     if (!win) { toast.error('Permita pop-ups para imprimir o cartaz'); return }
 
@@ -114,7 +105,7 @@ export default function SuperAdminPWA() {
     <span class="badge">AGENDAMENTO ONLINE</span>
     <h1>${t.name}</h1>
     ${t.cidade ? `<p class="city">${t.cidade}</p>` : '<div style="height:18px"></div>'}
-    <div class="qr"><img src="${qrUrl(link, 420)}" alt="QR Code"></div>
+    <div class="qr"><img src="${qrImg}" alt="QR Code"></div>
     <h2>Aponte a câmera e agende</h2>
     <ol>
       <li>Abra a câmera do celular</li>
@@ -232,7 +223,7 @@ export default function SuperAdminPWA() {
                   <button onClick={() => setModal(t)}
                     className="p-2 bg-white border-2 border-gray-100 rounded-xl hover:border-blue-300 transition-colors"
                     title="Ampliar">
-                    <img src={qrUrl(link, 200)} alt={`QR ${t.name}`} className="w-32 h-32" loading="lazy" />
+                    <QRCode value={link} size={128} />
                   </button>
                   <p className="text-[10px] text-gray-400 mt-2">Toque para ampliar</p>
                 </div>
@@ -295,7 +286,7 @@ export default function SuperAdminPWA() {
               {/* QR grande */}
               <div className="flex flex-col items-center">
                 <div className="p-4 bg-white border-2 border-gray-100 rounded-2xl">
-                  <img src={qrUrl(linkOf(modal), 300)} alt="QR Code" className="w-56 h-56" />
+                  <QRCode value={linkOf(modal)} size={224} />
                 </div>
                 <div className="flex gap-2 mt-3 w-full">
                   <Button size="sm" variant="outline" className="flex-1 gap-1.5 text-xs"

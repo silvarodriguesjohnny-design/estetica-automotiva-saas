@@ -5,3 +5,12 @@ dist/
 .env.production
 *.log
 .DS_Store
+
+# Segredos — nunca versionar
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+docs/**/*SECRETS*

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 import {
   CreditCard, CheckCircle2, AlertTriangle, Loader2, ExternalLink,
@@ -62,6 +63,8 @@ export default function StripeConnect() {
   const [params, setParams] = useSearchParams()
   const [state, setState] = useState<ConnectState>({ status: 'loading' })
   const [busy, setBusy] = useState(false)
+  const [online, setOnline] = useState(false)
+  const [savingToggle, setSavingToggle] = useState(false)
   const tokenRef = useRef('')
 
   const getToken = useCallback(async () => {
@@ -83,6 +86,33 @@ export default function StripeConnect() {
   }, [getToken])
 
   useEffect(() => { refresh() }, [refresh])
+
+  /* Estado do "aceitar pagamento online" */
+  useEffect(() => {
+    supabase.from('tenants').select('online_payments_enabled').maybeSingle()
+      .then(({ data }) => setOnline(!!data?.online_payments_enabled))
+  }, [])
+
+  /* Liga/desliga a opção "Pagar agora" na agenda pública.
+     Só faz sentido se a conta já puder receber — por isso o
+     controle fica desabilitado enquanto o Connect não está ativo. */
+  const toggleOnline = async (value: boolean) => {
+    setSavingToggle(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: prof } = await supabase
+      .from('profiles').select('tenant_id').eq('id', user?.id ?? '').maybeSingle()
+
+    const { error } = await supabase.from('tenants')
+      .update({ online_payments_enabled: value })
+      .eq('id', prof?.tenant_id ?? '')
+
+    if (error) { toast.error('Não foi possível salvar'); setSavingToggle(false); return }
+    setOnline(value)
+    toast.success(value
+      ? 'Pagamento online ativado na sua agenda'
+      : 'Pagamento online desativado — seus clientes pagam no local')
+    setSavingToggle(false)
+  }
 
   /* Voltou do fluxo da Stripe → revalida e limpa a URL */
   useEffect(() => {
@@ -116,7 +146,6 @@ export default function StripeConnect() {
     } finally { setBusy(false) }
   }
 
-  const pct = state.commissionPct ?? 2
   const e = state.earnings
 
   /* ══════════════════════════════════════════════════════════ */
@@ -157,6 +186,33 @@ export default function StripeConnect() {
                 className="gap-1.5 text-green-700">
                 Atualizar
               </Button>
+            </div>
+          </div>
+
+          {/* ── Aceitar pagamento online ──
+              A única decisão que a estética precisa tomar aqui.
+              Sem percentual, sem jargão financeiro. */}
+          <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center shrink-0">
+                  <Banknote className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold text-indigo-900">Aceitar pagamento na agenda</p>
+                  <p className="text-sm text-indigo-700 mt-0.5 leading-relaxed">
+                    {online
+                      ? 'Seus clientes veem a opção "Pagar agora" ao agendar. Quem paga antes praticamente não falta.'
+                      : 'Ativando, seus clientes poderão pagar no momento do agendamento — por cartão ou Pix.'}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={online}
+                disabled={savingToggle}
+                onCheckedChange={toggleOnline}
+                className="shrink-0 mt-1"
+              />
             </div>
           </div>
 
@@ -266,47 +322,6 @@ export default function StripeConnect() {
         </div>
       )}
 
-      {/* ── Comissão do plano ── */}
-      <div className="rounded-2xl border bg-card p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0">
-              <Percent className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div>
-              <p className="font-semibold text-foreground">Taxa da plataforma</p>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Cobrada apenas sobre vendas pagas online — agendamentos antecipados
-                e assinaturas. Serviço pago no local não tem taxa nenhuma.
-              </p>
-            </div>
-          </div>
-          <div className="text-right shrink-0">
-            <p className="text-3xl font-black text-indigo-600">{pct}%</p>
-            <p className="text-xs text-muted-foreground">
-              sobre vendas online
-            </p>
-          </div>
-        </div>
-
-        {/* Exemplo prático */}
-        <div className="mt-4 p-3 bg-muted rounded-xl text-sm">
-          <p className="text-xs text-muted-foreground mb-2">Exemplo em um serviço de R$ 150</p>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Você recebe</span>
-            <span className="font-bold text-green-600">{money(150 - 150 * pct / 100)}</span>
-          </div>
-          <div className="flex justify-between mt-1">
-            <span className="text-muted-foreground">Taxa da plataforma</span>
-            <span className="font-semibold text-muted-foreground">{money(150 * pct / 100)}</span>
-          </div>
-        </div>
-
-        <p className="text-xs text-muted-foreground mt-3">
-          💡 A taxa é a mesma em todos os planos. Você só paga quando vende.
-        </p>
-      </div>
-
       {/* ── Rodapé ── */}
       <div className="flex gap-3 p-4 bg-gray-50 rounded-xl text-xs text-gray-500">
         <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-gray-400" />
@@ -315,7 +330,7 @@ export default function StripeConnect() {
             <strong className="text-gray-700">Seus dados bancários</strong> ficam com o Stripe,
             não com a gente. Não temos acesso à sua conta.
           </p>
-          <p>Repasses diários. O Stripe cobra as taxas dele de processamento à parte.</p>
+          <p>Os valores caem na sua conta com repasse diário, direto do Stripe.</p>
         </div>
       </div>
     </div>
