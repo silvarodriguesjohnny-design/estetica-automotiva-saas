@@ -15,6 +15,7 @@ import { format, subDays, startOfDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, type ServiceOrderWithRelations } from '@/types'
 import { cn } from '@/lib/utils'
+import OnboardingChecklist from '@/components/OnboardingChecklist'
 
 const CHART_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6']
 
@@ -198,6 +199,9 @@ export default function Dashboard() {
           {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
         </p>
       </div>
+
+      {/* Primeiros passos — some sozinho quando tudo estiver feito */}
+      <OnboardingChecklist />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
