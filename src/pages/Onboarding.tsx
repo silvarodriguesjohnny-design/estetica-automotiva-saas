@@ -6,6 +6,7 @@ import {
   Car, CheckCircle2, ArrowLeft, ArrowRight, Loader2, Building2, User,
   MapPin, CreditCard, Sparkles, ShieldCheck, Rocket, Eye, EyeOff, Check,
 } from 'lucide-react'
+import { getPriceId, type PlanId } from '@/config/plans'
 
 /* ══════════════════════════════════════════════════════════════
    PLANOS  (espelham a Landing Page)
@@ -213,13 +214,12 @@ export default function Onboarding() {
               Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
             },
             body: JSON.stringify({
-              mode: 'subscription',
               tenant_id: tenantId,
               plan_id: planId,
+              price_id: getPriceId(planId as PlanId),   // null → price_data inline
               amount: Math.round(plan.price * 100),
-              description: `Auto Estética Flow — Plano ${plan.name}`,
               customer_email: email,
-              success_url: `${window.location.origin}/login?welcome=1`,
+              success_url: `${window.location.origin}/dashboard?welcome=1`,
               cancel_url: `${window.location.origin}/onboarding?plan=${planId}`,
             }),
           })

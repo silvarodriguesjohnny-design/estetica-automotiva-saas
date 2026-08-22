@@ -34,6 +34,18 @@ interface Vehicle {
 type Step = 'identify' | 'register' | 'vehicle' | 'offer' | 'datetime' | 'payment' | 'done'
 type OfferKind = 'service' | 'plan'
 
+/** Assinatura ativa do cliente nesta estética. */
+interface ActiveSub {
+  id: string
+  plan_id: string
+  plan_name: string
+  sessions_total: number | null
+  sessions_used: number
+  remaining: number
+  cycle_end: string | null
+  services: string[] | null
+}
+
 /* ══════════════════════════════════════════════════════════════
    HELPERS
    ══════════════════════════════════════════════════════════════ */
@@ -244,8 +256,11 @@ export default function PublicBooking() {
   const [busySlots, setBusySlots] = useState<string[]>([])
 
   // pagamento
-  const [payWhen, setPayWhen] = useState<'now' | 'local'>('local')
+  const [payWhen, setPayWhen] = useState<'now' | 'local' | 'subscription'>('local')
   const [bookingRef, setBookingRef] = useState('')
+
+  // assinatura ativa do cliente
+  const [activeSub, setActiveSub] = useState<ActiveSub | null>(null)
 
   usePWA(tenant)
 
@@ -312,7 +327,23 @@ export default function PublicBooking() {
         // Se só tem um veículo, já deixa selecionado
         if (list.length === 1) setVehicleId(list[0].id)
 
-        toast.success(`Bem-vindo de volta, ${c.name.split(' ')[0]}!`)
+        /* ── Assinatura ativa? ──
+           Se tiver saldo, o agendamento sai sem cobrança nova. */
+        const { data: sub } = await supabase.rpc('get_active_subscription', {
+          p_tenant_id: tenantId!, p_customer_id: c.id,
+        })
+        const s = Array.isArray(sub) ? sub[0] : sub
+        if (s && (s.remaining ?? 0) > 0) {
+          setActiveSub(s as ActiveSub)
+          setPayWhen('subscription')
+          toast.success(
+            `Bem-vindo de volta, ${c.name.split(' ')[0]}! Você tem ${s.remaining} ${s.remaining === 1 ? 'sessão' : 'sessões'} na sua assinatura.`,
+          )
+        } else {
+          if (s) setActiveSub(s as ActiveSub)   // assinatura sem saldo no ciclo
+          toast.success(`Bem-vindo de volta, ${c.name.split(' ')[0]}!`)
+        }
+
         setStep('vehicle')
       } else {
         // Primeira vez nesta estética
@@ -373,17 +404,44 @@ export default function PublicBooking() {
       }
 
       // 3. Ordem de serviço
+      const usingSub = payWhen === 'subscription' && !!activeSub && activeSub.remaining > 0
+
       const { data: order, error: orderErr } = await supabase.from('service_orders').insert({
         tenant_id: tenantId, customer_id: cid, vehicle_id: vid,
-        status: 'pending',
+        // Coberto pela assinatura → já entra confirmado, sem pendência de pagamento
+        status: usingSub ? 'confirmed' : 'pending',
         start_time: `${date}T${time}:00`,
-        total_amount: totalPrice,
+        total_amount: usingSub ? 0 : totalPrice,
         subscription_plan_id: offerKind === 'plan' ? planId : null,
-        payment_status: payWhen === 'now' ? 'pending' : 'pending',
+        customer_subscription_id: usingSub ? activeSub!.id : null,
+        covered_by_subscription: usingSub,
+        payment_status: usingSub ? 'paid' : 'pending',
         source: 'public_booking',
-        customer_notes: offerKind === 'plan' ? `Assinatura: ${selectedPlan?.name}` : null,
+        customer_notes: usingSub
+          ? `Coberto pela assinatura ${activeSub!.plan_name}`
+          : offerKind === 'plan' ? `Assinatura: ${selectedPlan?.name}` : null,
       }).select('id').single()
       if (orderErr) throw orderErr
+
+      /* ── Consome uma sessão da assinatura ──
+         A função no banco trava a linha e valida o saldo, então
+         dois agendamentos simultâneos não conseguem gastar a mesma
+         sessão. */
+      if (usingSub) {
+        const { data: ok } = await supabase.rpc('consume_subscription_session', {
+          p_subscription_id: activeSub!.id,
+          p_order_id: order.id,
+        })
+        if (ok === false) {
+          // Saldo acabou entre a tela e o envio — desfaz e avisa
+          await supabase.from('service_orders').delete().eq('id', order.id)
+          toast.error('Suas sessões deste ciclo acabaram. Escolha uma forma de pagamento.')
+          setPayWhen('local')
+          setActiveSub(s => s ? { ...s, remaining: 0 } : s)
+          setSaving(false)
+          return
+        }
+      }
 
       // 4. Item da OS (só para serviço avulso)
       if (offerKind === 'service' && selectedService) {
@@ -397,15 +455,21 @@ export default function PublicBooking() {
       setBookingRef(ref)
 
       // 5. Confirmação por WhatsApp (função pública, não exige login)
+      const remainingAfter = usingSub ? Math.max(0, activeSub!.remaining - 1) : 0
       const msg =
         `✅ *Agendamento confirmado!*\n\n` +
         `Olá, *${name.split(' ')[0]}*! Seu horário na *${tenant?.name}* está reservado.\n\n` +
         `📋 Código: *${ref}*\n` +
-        `${offerKind === 'plan' ? '🔄' : '🚗'} ${offerName}\n` +
+        `${usingSub ? '🔄' : offerKind === 'plan' ? '🔄' : '🚗'} ${usingSub ? activeSub!.plan_name : offerName}\n` +
         `📅 ${date.split('-').reverse().join('/')} às ${time}\n` +
-        `💰 ${money(totalPrice)}${offerKind === 'plan' ? ` ${INTERVAL_LABEL[selectedPlan?.interval ?? 'single']}` : ''}\n` +
-        `${payWhen === 'now' ? '💳 Pagamento antecipado' : '🏪 Pagamento no local'}\n\n` +
-        `Qualquer dúvida, é só chamar. Até breve! 🚗✨`
+        (usingSub
+          ? `✨ Coberto pela sua assinatura\n` +
+            (activeSub!.sessions_total
+              ? `🎟️ Restam *${remainingAfter}* ${remainingAfter === 1 ? 'sessão' : 'sessões'} neste ciclo\n`
+              : '')
+          : `💰 ${money(totalPrice)}${offerKind === 'plan' ? ` ${INTERVAL_LABEL[selectedPlan?.interval ?? 'single']}` : ''}\n` +
+            `${payWhen === 'now' ? '💳 Pagamento antecipado' : '🏪 Pagamento no local'}\n`) +
+        `\nQualquer dúvida, é só chamar. Até breve! 🚗✨`
 
       const cleanPhone = onlyDigits(phone).length === 11
         ? `55${onlyDigits(phone)}`
@@ -421,7 +485,7 @@ export default function PublicBooking() {
       }).catch(() => {}) // falha no WhatsApp não invalida o agendamento
 
       // 6. Pagamento antecipado via Stripe
-      if (payWhen === 'now') {
+      if (payWhen === 'now' && !usingSub) {
         try {
           const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
             method: 'POST',
@@ -832,9 +896,9 @@ export default function PublicBooking() {
               <Row label="Data" value={`${date.split('-').reverse().join('/')} às ${time}`} />
               <div className="pt-2.5 border-t border-gray-200 flex justify-between items-center">
                 <span className="font-bold text-gray-700">Total</span>
-                <span className="font-black text-xl text-blue-600">
-                  {money(totalPrice)}
-                  {offerKind === 'plan' && (
+                <span className={`font-black text-xl ${payWhen === 'subscription' ? 'text-purple-600' : 'text-blue-600'}`}>
+                  {payWhen === 'subscription' ? 'Incluso na assinatura' : money(totalPrice)}
+                  {offerKind === 'plan' && payWhen !== 'subscription' && (
                     <span className="text-xs font-normal text-gray-400 ml-1">
                       {INTERVAL_LABEL[selectedPlan?.interval ?? 'single']}
                     </span>
@@ -845,6 +909,44 @@ export default function PublicBooking() {
 
             {/* Opções */}
             <div className="space-y-3">
+              {/* Assinatura ativa com saldo */}
+              {activeSub && activeSub.remaining > 0 && (
+                <button onClick={() => setPayWhen('subscription')}
+                  className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-4 transition-all
+                    ${payWhen === 'subscription' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0
+                    ${payWhen === 'subscription' ? 'bg-purple-600' : 'bg-gray-100'}`}>
+                    <Repeat className={`w-5 h-5 ${payWhen === 'subscription' ? 'text-white' : 'text-gray-500'}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-gray-900">Usar minha assinatura</p>
+                    <p className="text-sm text-gray-500">
+                      {activeSub.plan_name}
+                      {activeSub.sessions_total
+                        ? ` · restam ${activeSub.remaining} de ${activeSub.sessions_total}`
+                        : ' · sessões ilimitadas'}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-sm font-black text-purple-600">Sem custo</span>
+                    {payWhen === 'subscription' && <CheckCircle2 className="w-5 h-5 text-purple-600 ml-auto mt-1" />}
+                  </div>
+                </button>
+              )}
+
+              {/* Assinatura sem saldo no ciclo */}
+              {activeSub && activeSub.remaining <= 0 && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800 flex gap-2">
+                  <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    Suas {activeSub.sessions_total} sessões da assinatura <strong>{activeSub.plan_name}</strong> já
+                    foram usadas neste ciclo
+                    {activeSub.cycle_end && ` — renova em ${new Date(activeSub.cycle_end).toLocaleDateString('pt-BR')}`}.
+                    Escolha uma forma de pagamento abaixo.
+                  </span>
+                </div>
+              )}
+
               <button onClick={() => setPayWhen('now')}
                 className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-4 transition-all
                   ${payWhen === 'now' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
@@ -890,7 +992,9 @@ export default function PublicBooking() {
             <PrimaryBtn onClick={handleConfirm} disabled={saving} className="flex-1">
               {saving
                 ? <><Loader2 className="w-5 h-5 animate-spin" />Confirmando…</>
-                : <><CheckCircle2 className="w-5 h-5" />Confirmar agendamento</>}
+                : payWhen === 'subscription'
+                  ? <><Repeat className="w-5 h-5" />Agendar com minha assinatura</>
+                  : <><CheckCircle2 className="w-5 h-5" />Confirmar agendamento</>}
             </PrimaryBtn>
           ) : (
             <PrimaryBtn onClick={goNext} disabled={!canAdvance || checking} className="flex-1">

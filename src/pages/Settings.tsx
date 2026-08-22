@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/lib/supabase/client'
 import {
@@ -6,6 +7,7 @@ import {
   Link as LinkIcon, Copy, ExternalLink,
 } from 'lucide-react'
 import WhatsAppConnect from '@/components/WhatsAppConnect'
+import StripeConnect from '@/components/StripeConnect'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -53,6 +55,24 @@ export default function Settings() {
 
   const bookingUrl = `${window.location.origin}/agendar/${tenant?.id ?? ''}`
 
+  /* A aba vem da URL — é assim que o retorno do Stripe Connect
+     (?tab=pagamentos&done=1) reabre na tela certa. */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tab, setTabState] = useState(searchParams.get('tab') ?? 'geral')
+
+  const setTab = (value: string) => {
+    setTabState(value)
+    const p = new URLSearchParams(searchParams)
+    if (value === 'geral') p.delete('tab')
+    else p.set('tab', value)
+    setSearchParams(p, { replace: true })
+  }
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('tab')
+    if (fromUrl && fromUrl !== tab) setTabState(fromUrl)
+  }, [searchParams])
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -60,14 +80,24 @@ export default function Settings() {
         <p className="text-sm text-muted-foreground">Gerencie sua conta e preferências</p>
       </div>
 
-      <Tabs defaultValue="geral">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="geral">Geral</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           <TabsTrigger value="agendamento">Agendamento</TabsTrigger>
+          <TabsTrigger value="pagamentos">Pagamentos</TabsTrigger>
           <TabsTrigger value="plano">Plano</TabsTrigger>
           <TabsTrigger value="seguranca">Segurança</TabsTrigger>
         </TabsList>
+
+        {/* ── Pagamentos: Stripe Connect ── */}
+        <TabsContent value="pagamentos" className="mt-4">
+          <Card>
+            <CardContent className="pt-6">
+              <StripeConnect />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* ── WhatsApp: autoatendimento de conexão ── */}
         <TabsContent value="whatsapp" className="mt-4">
