@@ -40,6 +40,24 @@ export const supabasePublic = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KE
     autoRefreshToken: false,
     // Sem isto, um link com #access_token na URL sequestraria a sessão
     detectSessionInUrl: false,
+
+    /* storageKey própria — este é o detalhe que trava a página.
+
+       Por padrão o supabase-js deriva a chave da URL do projeto.
+       Como o client global usa a mesma URL, os dois GoTrueClient
+       acabam disputando a MESMA chave e coordenam entre si por um
+       lock de navegador (navigator.locks). Se o lock não é
+       liberado, a próxima chamada fica pendurada para sempre:
+       sem erro, sem rejeição, sem timeout. O "Verificando..."
+       eterno vem daí.
+
+       Dando uma chave exclusiva, os dois deixam de se conhecer. */
+    storageKey: 'sb-agenda-publica-noauth',
+
+    /* Sem lock: este client não tem sessão para proteger de
+       concorrência, então o lock só existiria para criar o
+       problema acima. */
+    lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<unknown>) => fn(),
   },
   global: {
     headers: { 'X-Client-Info': 'estetica-agenda-publica/1.0' },

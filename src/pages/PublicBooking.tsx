@@ -348,6 +348,16 @@ export default function PublicBooking() {
   /* ── busca por CPF/CNPJ ──
      Cliente conhecido  → pula "Seus dados", vai direto para o veículo
      Cliente novo       → segue para o cadastro                        */
+  /* Nenhuma etapa da agenda pode ficar pendurada para sempre.
+     Num tablet de balcão, "carregando" eterno é pior que erro:
+     o cliente desiste e o lojista não sabe o que fazer. */
+  const comTimeout = <T,>(p: PromiseLike<T>, ms = 8000): Promise<T> =>
+    Promise.race([
+      Promise.resolve(p),
+      new Promise<T>((_, rej) =>
+        setTimeout(() => rej(new Error('tempo esgotado')), ms)),
+    ])
+
   const handleIdentify = useCallback(async () => {
     const raw = onlyDigits(doc)
     if (!isValidDoc(doc)) {
@@ -356,9 +366,10 @@ export default function PublicBooking() {
     }
     setChecking(true)
     try {
-      const { data, error } = await supabase
-        .from('customers').select('id, name, phone, email')
-        .eq('tenant_id', tenantId!).eq('cpf_cnpj', raw).maybeSingle()
+      const { data, error } = await comTimeout(
+        supabase.from('customers').select('id, name, phone, email')
+          .eq('tenant_id', tenantId!).eq('cpf_cnpj', raw).maybeSingle(),
+      )
 
       if (error) console.warn('[identify]', error.message)
 
@@ -368,9 +379,10 @@ export default function PublicBooking() {
         setIsReturning(true)
         setName(c.name); setPhone(c.phone ?? ''); setEmail(c.email ?? '')
 
-        const { data: vs } = await supabase
-          .from('vehicles').select('id, brand, model, plate, color')
-          .eq('customer_id', c.id).eq('tenant_id', tenantId!)
+        const { data: vs } = await comTimeout(
+          supabase.from('vehicles').select('id, brand, model, plate, color')
+            .eq('customer_id', c.id).eq('tenant_id', tenantId!),
+        ).catch(() => ({ data: [] }))
         const list = (vs as Vehicle[]) ?? []
         setSavedVehicles(list)
         // Se só tem um veículo, já deixa selecionado
@@ -378,9 +390,14 @@ export default function PublicBooking() {
 
         /* ── Assinatura ativa? ──
            Se tiver saldo, o agendamento sai sem cobrança nova. */
-        const { data: sub } = await supabase.rpc('get_active_subscription', {
-          p_tenant_id: tenantId!, p_customer_id: c.id,
-        })
+        /* A RPC pode não existir ou não ter GRANT para anon.
+           Nenhum dos dois casos pode impedir o agendamento — no
+           pior cenário o cliente paga, que é melhor que travar. */
+        const { data: sub } = await comTimeout(
+          supabase.rpc('get_active_subscription', {
+            p_tenant_id: tenantId!, p_customer_id: c.id,
+          }),
+        ).catch(() => ({ data: null }))
         const s = Array.isArray(sub) ? sub[0] : sub
         if (s && (s.remaining ?? 0) > 0) {
           setActiveSub(s as ActiveSub)
@@ -403,6 +420,7 @@ export default function PublicBooking() {
       }
     } catch (err) {
       console.error('[identify]', err)
+      toast.info('Vamos seguir com um cadastro rápido.')
       // Não trava o cliente: segue como cadastro novo
       setIsReturning(false)
       setStep('register')
